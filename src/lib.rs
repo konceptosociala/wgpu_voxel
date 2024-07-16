@@ -1,4 +1,5 @@
 pub mod engine;
+pub mod game;
 pub mod renderer;
 
 use std::sync::Arc;
@@ -11,7 +12,7 @@ use hecs::World;
 
 use engine::{state::StateManager, Engine};
 use parking_lot::Mutex;
-use renderer::Renderer;
+use renderer::{error::RenderError, Renderer};
 
 pub use game_loop::winit::window::WindowBuilder;
 
@@ -24,18 +25,18 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new(window: WindowBuilder) -> Game {
+    pub fn new(window: WindowBuilder) -> anyhow::Result<Game> {
         let event_loop = EventLoop::new().unwrap();
         let window = Arc::new(window.build(&event_loop).unwrap());
         let world = Arc::new(Mutex::new(World::new()));
 
-        Game {
+        Ok(Game {
             event_loop: Some(event_loop),
-            renderer: pollster::block_on(Renderer::new(window)),
+            renderer: pollster::block_on(Renderer::new(window))?,
             state_manager: StateManager::new(world.clone()),
             world,
             engine: None,
-        }
+        })
     }
 
     pub fn set_engine(&mut self, engine: Box<dyn Engine>) {
@@ -48,7 +49,7 @@ impl Game {
         }
 
         let event_loop = std::mem::take(&mut self.event_loop).unwrap();
-        let window = self.renderer.window.clone();
+        let window = self.renderer.window();
 
         game_loop(
             event_loop, window, self, 240, 0.1,
@@ -59,8 +60,8 @@ impl Game {
             |g| {
                 match g.game.render() {
                     Ok(_) => {},
-                    Err(wgpu::SurfaceError::Lost) => g.game.renderer.resize(),
-                    Err(wgpu::SurfaceError::OutOfMemory) => g.exit(),
+                    Err(RenderError::Lost) => g.game.renderer.resize(),
+                    Err(RenderError::OutOfMemory) => g.exit(),
                     Err(e) => eprintln!("{e}"),
                 }
             },
@@ -88,7 +89,7 @@ impl Game {
         self.engine.as_mut().unwrap().update(&mut self.world.lock(), &mut self.state_manager);
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    fn render(&mut self) -> Result<(), RenderError> {
         self.engine.as_mut().unwrap().render(&mut self.world.lock(), &mut self.renderer)
     }
 

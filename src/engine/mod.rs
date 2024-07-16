@@ -1,17 +1,14 @@
-pub mod state;
-
 use game_loop::winit::event::WindowEvent;
 use hecs::World;
-use state::StateManager;
 
-use crate::renderer::Renderer;
+use crate::renderer::{error::RenderError, Renderer};
 
 pub trait Engine {
-    fn init(&mut self, world: &mut World, state_manager: &mut StateManager);
+    fn init(&mut self, world: &mut World);
 
-    fn update(&mut self, world: &mut World, state_manager: &mut StateManager);
+    fn update(&mut self, world: &mut World);
 
     fn input(&mut self, event: &WindowEvent) -> bool;
 
-    fn render(&mut self, world: &mut World, renderer: &mut Renderer) -> Result<(), wgpu::SurfaceError>;
+    fn render(&mut self, world: &mut World, renderer: &mut Renderer) -> Result<(), RenderError>;
 }
