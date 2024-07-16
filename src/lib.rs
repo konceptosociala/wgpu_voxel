@@ -5,21 +5,22 @@ pub mod renderer;
 use std::sync::Arc;
 
 use game_loop::{game_loop, winit::{
-    event::{Event, WindowEvent}, 
+    event::Event, 
     event_loop::EventLoop, 
 }};
 use hecs::World;
 
-use engine::{state::StateManager, Engine};
+use engine::Engine;
 use parking_lot::Mutex;
 use renderer::{error::RenderError, Renderer};
 
 pub use game_loop::winit::window::WindowBuilder;
+pub use game_loop::winit::dpi::PhysicalSize;
+pub use game_loop::winit::event::WindowEvent;
 
 pub struct Game {
     event_loop: Option<EventLoop<()>>,
     renderer: Renderer,
-    state_manager: StateManager,
     world: Arc<Mutex<World>>,
     engine: Option<Box<dyn Engine>>,
 }
@@ -33,7 +34,6 @@ impl Game {
         Ok(Game {
             event_loop: Some(event_loop),
             renderer: pollster::block_on(Renderer::new(window))?,
-            state_manager: StateManager::new(world.clone()),
             world,
             engine: None,
         })
@@ -51,11 +51,12 @@ impl Game {
         let event_loop = std::mem::take(&mut self.event_loop).unwrap();
         let window = self.renderer.window();
 
+        self.engine.as_mut().unwrap().init(&mut self.world.lock());
+
         game_loop(
             event_loop, window, self, 240, 0.1,
             |g| {
                 g.game.update();
-                g.game.state_manager.update();
             },
             |g| {
                 match g.game.render() {
@@ -86,7 +87,7 @@ impl Game {
     }
 
     fn update(&mut self) {
-        self.engine.as_mut().unwrap().update(&mut self.world.lock(), &mut self.state_manager);
+        self.engine.as_mut().unwrap().update(&mut self.world.lock());
     }
 
     fn render(&mut self) -> Result<(), RenderError> {

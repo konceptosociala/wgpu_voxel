@@ -1,4 +1,3 @@
-use std::path::Path;
 use bytemuck::{Pod, Zeroable};
 
 #[repr(C)]
@@ -10,14 +9,14 @@ pub struct Vertex {
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
-        0 => Float32x3, 
-        1 => Float32x3
+        0 => Float32x3,
+        1 => Float32x3,
     ];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout { 
-            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress, 
-            step_mode: wgpu::VertexStepMode::Vertex, 
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &Self::ATTRIBS,
         }
     }
@@ -28,8 +27,4 @@ unsafe impl Pod for Vertex {}
 
 pub struct Mesh {
     pub vertex_data: Vec<Vertex>,
-}
-
-impl Mesh {
-    
 }

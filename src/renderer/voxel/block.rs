@@ -11,8 +11,12 @@ impl Block {
         Block { active, material_id }
     }
 
-    pub fn material_id(&self) -> u8 {
+    pub fn material(&self) -> u8 {
         self.material_id
+    }
+
+    pub fn set_material(&mut self, material_id: u8) {
+        self.material_id = material_id;
     }
 
     pub fn is_active(&self) -> bool {
