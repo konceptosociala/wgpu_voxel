@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 use nalgebra_glm as glm;
 
-use crate::renderer::pbr::{mesh::Mesh, transform::Transform};
+use crate::renderer::pbr::{model::Model, transform::Transform};
 
 use super::{block::Block, chunk::{Chunk, ChunkBundle}};
 
@@ -70,7 +70,7 @@ impl VoxelModel {
             let block_z = z as usize - (chunk_z * Chunk::CHUNK_SIZE);
 
             chunks
-                .get_mut(&(block_x as u8, block_y as u8, block_z as u8)).unwrap()
+                .get_mut(&(chunk_x as u8, chunk_y as u8, chunk_z as u8)).unwrap()
                 .set_block(block, block_x, block_y, block_z).unwrap();
         }
         
@@ -92,7 +92,7 @@ impl VoxelModel {
             .collect()
     }
 
-    pub fn into_mesh(self) -> Mesh {
+    pub fn into_model(self) -> Model {
         todo!();
     }
 }

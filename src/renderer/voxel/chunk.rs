@@ -1,42 +1,32 @@
-use std::sync::Arc;
-
 use hecs::Bundle;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::renderer::{
-    voxel::block::Block,
+    buffer::BufferId, 
     pbr::{
-        mesh::Vertex, 
+        mesh::{Mesh, Vertex}, 
         transform::Transform,
-    },
+    }, 
+    voxel::block::Block, 
+    Renderable, Renderer
 };
 
 #[derive(Debug, Error)]
 #[error("Invalid block coords ({0}, {1}, {2}) in chunk")]
-pub struct InvalidBlockCoords(usize, usize, usize);
+pub struct InvalidBlockCoords(pub usize, pub usize, pub usize);
 
 const VERTICES: &[Vertex] = &[
     Vertex { position: [-0.0868241, 0.49240386, 0.0], color: [0.5, 0.0, 0.5] }, // A
     Vertex { position: [-0.49513406, 0.06958647, 0.0], color: [0.5, 0.0, 0.5] }, // B
     Vertex { position: [-0.21918549, -0.44939706, 0.0], color: [0.5, 0.0, 0.5] }, // C
-    Vertex { position: [0.35966998, -0.3473291, 0.0], color: [0.5, 0.0, 0.5] }, // D
-    Vertex { position: [0.44147372, 0.2347359, 0.0], color: [0.5, 0.0, 0.5] }, // E
-];
-
-const INDICES: &[u16] = &[
-    0, 1, 4,
-    1, 2, 4,
-    2, 3, 4,
 ];
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Chunk {
     blocks: [[[Block; Self::CHUNK_SIZE]; Self::CHUNK_SIZE]; Self::CHUNK_SIZE],
     #[serde(skip)]
-    vertex_buffer: Option<Arc<wgpu::Buffer>>,
-    #[serde(skip)]
-    index_buffer: Option<Arc<wgpu::Buffer>>,
+    vertex_buffer: Option<BufferId>,
 }
 
 impl Chunk {
@@ -63,6 +53,28 @@ impl Chunk {
 
         Ok(())
     }
+
+    // TODO: generate mesh
+    pub fn generate_mesh(&self) -> Mesh {
+        Mesh { vertex_data: VERTICES.to_vec() }
+    }
+}
+
+impl Renderable for Chunk {
+    fn update(&mut self, renderer: &mut Renderer) {
+        let mesh = self.generate_mesh();
+
+        if self.vertex_buffer.is_none() {
+            self.vertex_buffer = Some(renderer.create_vertex_buffer(mesh.vertex_data.len()));
+        }
+
+        renderer.update_vertex_buffer(self.vertex_buffer(), &mesh.vertex_data)
+            .expect("Cannot call update() on chunk");
+    }
+
+    fn vertex_buffer(&self) -> BufferId {
+        self.vertex_buffer.expect("Chunk is not set up with update()")
+    }
 }
 
 impl Default for Chunk {
@@ -70,12 +82,11 @@ impl Default for Chunk {
         Chunk {
             blocks: [[[Block::default(); Self::CHUNK_SIZE]; Self::CHUNK_SIZE]; Self::CHUNK_SIZE],
             vertex_buffer: None,
-            index_buffer: None,
         }
     }
 }
 
-#[derive(Bundle)]
+#[derive(Bundle, Debug)]
 pub struct ChunkBundle {
     pub chunk: Chunk,
     pub transform: Transform,

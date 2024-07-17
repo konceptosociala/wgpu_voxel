@@ -51,7 +51,7 @@ impl Game {
         let event_loop = std::mem::take(&mut self.event_loop).unwrap();
         let window = self.renderer.window();
 
-        self.engine.as_mut().unwrap().init(&mut self.world.lock());
+        self.engine.as_mut().unwrap().init(&mut self.world.lock(), &mut self.renderer);
 
         game_loop(
             event_loop, window, self, 240, 0.1,

@@ -2,7 +2,7 @@ use hecs::World;
 use wgpu_voxel::{
     engine::Engine, 
     renderer::{
-        error::RenderError, pbr::transform::Transform, voxel::{chunk::Chunk, model::VoxelModel}, Renderer
+        error::RenderError, pbr::transform::Transform, voxel::{chunk::Chunk, model::VoxelModel}, Renderable, Renderer
     }, 
     Game, PhysicalSize, WindowBuilder, WindowEvent,
 };
@@ -10,10 +10,11 @@ use wgpu_voxel::{
 struct MyGame;
 
 impl Engine for MyGame {
-    fn init(&mut self, world: &mut World) {
+    fn init(&mut self, world: &mut World, renderer: &mut Renderer) {
         let models = VoxelModel::load_vox("model.vox").unwrap();
         for model in models {
-            for chunk_bundle in model.into_chunks().into_iter() {
+            for mut chunk_bundle in model.into_chunks().into_iter() {
+                chunk_bundle.chunk.update(renderer);
                 world.spawn(chunk_bundle);
             }
         }
@@ -34,7 +35,7 @@ impl Engine for MyGame {
         let mut encoder = renderer.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         {
-            let mut _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render pass"),
                 color_attachments: &[
                     Some(wgpu::RenderPassColorAttachment {
@@ -49,10 +50,13 @@ impl Engine for MyGame {
                 depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
-            });
-    
-            for (_, (chunk, transform)) in world.query::<(&Chunk, &Transform)>().iter() {
+            }); 
 
+            render_pass.set_pipeline(&renderer.render_pipelines.main_pipeline);
+    
+            for (_, (chunk, _)) in &mut world.query::<(&Chunk, &Transform)>() {
+                render_pass.set_vertex_buffer(0, renderer.vertex_buffers[chunk.vertex_buffer()].inner.slice(..)); 
+                render_pass.draw(0..3, 0..1);
             }
         }
 

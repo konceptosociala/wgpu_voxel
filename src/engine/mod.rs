@@ -4,7 +4,7 @@ use hecs::World;
 use crate::renderer::{error::RenderError, Renderer};
 
 pub trait Engine {
-    fn init(&mut self, world: &mut World);
+    fn init(&mut self, world: &mut World, renderer: &mut Renderer);
 
     fn update(&mut self, world: &mut World);
 

@@ -1,16 +1,17 @@
 use std::sync::Arc;
+use buffer::{Buffer, BufferId, InvalidBufferId};
 use game_loop::winit::{
     dpi::PhysicalSize, 
     window::Window,
 };
-use pbr::{mesh::Mesh, model::Model};
+use pbr::mesh::Vertex;
 use pipeline::RenderPipelines;
-use wgpu::util::DeviceExt;
 
 pub mod error;
 pub mod voxel;
 pub mod pbr;
 pub mod pipeline;
+pub mod buffer;
 
 #[allow(dead_code)]
 pub struct Renderer {
@@ -21,6 +22,7 @@ pub struct Renderer {
     pub config: wgpu::SurfaceConfiguration,
     pub size: PhysicalSize<u32>,
     pub render_pipelines: RenderPipelines,
+    pub vertex_buffers: Vec<Buffer<Vertex>>
 }
 
 impl Renderer {
@@ -50,6 +52,7 @@ impl Renderer {
             size,
             window,
             render_pipelines,
+            vertex_buffers: vec![],
         })
     }
 
@@ -70,30 +73,24 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
     }
 
-    pub fn create_model(&mut self, mesh: Mesh) -> Model {
-        let buffer = self.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex buffer"),
-                contents: bytemuck::cast_slice(&mesh.vertex_data),
-                usage: wgpu::BufferUsages::VERTEX,
-            }  
-        );
+    pub fn create_vertex_buffer(&mut self, capacity: usize) -> BufferId {
+        let id = self.vertex_buffers.len();
 
-        Model {
-            mesh,
-            buffer,
-        }
+        self.vertex_buffers.push(Buffer::new(
+            &self.device, 
+            capacity, 
+            wgpu::BufferUsages::VERTEX,
+        ));
+
+        id
     }
 
-    pub fn update_model(&mut self, model: &mut Model, new_mesh: Mesh) {
-        model.buffer = self.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex buffer"),
-                contents: bytemuck::cast_slice(&new_mesh.vertex_data),
-                usage: wgpu::BufferUsages::VERTEX,
-            }  
-        );
-        model.mesh = new_mesh;
+    pub fn update_vertex_buffer(&mut self, id: BufferId, data: &[Vertex]) -> Result<(), InvalidBufferId> {
+        let buffer = self.vertex_buffers.get_mut(id).ok_or(InvalidBufferId(id))?;
+
+        buffer.fill(&self.device, &self.queue, data);
+
+        Ok(())
     }
 
     async fn init_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
@@ -101,7 +98,7 @@ impl Renderer {
             &wgpu::DeviceDescriptor {
                 required_features: wgpu::Features::empty(),
                 required_limits: wgpu::Limits::default(),
-                label: None,
+                label: Some("Logical device"),
             },
             None,
         ).await
@@ -136,4 +133,10 @@ impl Renderer {
             desired_maximum_frame_latency: 2,
         }
     }
+}
+
+pub trait Renderable {
+    fn update(&mut self, renderer: &mut Renderer);
+
+    fn vertex_buffer(&self) -> BufferId;
 }

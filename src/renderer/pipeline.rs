@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use super::pbr::mesh::Vertex;
 
 pub struct Pipeline {
@@ -61,6 +63,14 @@ impl Pipeline {
             layout,
             pipeline,
         }
+    }
+}
+
+impl Deref for Pipeline {
+    type Target = wgpu::RenderPipeline;
+
+    fn deref(&self) -> &Self::Target {
+        &self.pipeline
     }
 }
 

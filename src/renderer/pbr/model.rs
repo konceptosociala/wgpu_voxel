@@ -1,8 +1,13 @@
+use crate::renderer::{
+    buffer::BufferId,
+    Renderable,
+};
+
 use super::mesh::Mesh;
 
 pub struct Model {
-    pub(crate) mesh: Mesh,
-    pub(crate) buffer: wgpu::Buffer,
+    mesh: Mesh,
+    vertex_buffer: Option<BufferId>,
 }
 
 impl Model {
