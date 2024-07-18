@@ -1,17 +1,16 @@
 use std::sync::Arc;
-use buffer::{Buffer, BufferId, InvalidBufferId};
+use hal::{buffer::{Buffer, BufferId, InvalidBufferId}, depth_texture::DepthTexture};
 use game_loop::winit::{
     dpi::PhysicalSize, 
     window::Window,
 };
-use pbr::mesh::Vertex;
-use pipeline::RenderPipelines;
+use pbr::{camera::{Camera, CameraBuffer}, mesh::Vertex, transform::Transform};
+use hal::pipeline::RenderPipelines;
 
 pub mod error;
 pub mod voxel;
 pub mod pbr;
-pub mod pipeline;
-pub mod buffer;
+pub mod hal;
 
 #[allow(dead_code)]
 pub struct Renderer {
@@ -21,8 +20,10 @@ pub struct Renderer {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub size: PhysicalSize<u32>,
+    pub vertex_buffers: Vec<Buffer<Vertex>>,
+    pub camera_buffer: CameraBuffer,
     pub render_pipelines: RenderPipelines,
-    pub vertex_buffers: Vec<Buffer<Vertex>>
+    pub depth_texture: DepthTexture,
 }
 
 impl Renderer {
@@ -42,7 +43,10 @@ impl Renderer {
 
         let config = Self::init_config(surface_format, size, surface_caps);
 
-        let render_pipelines = RenderPipelines::new(&device, &config);
+        let camera_buffer = CameraBuffer::new(&device, &queue);
+        let render_pipelines = RenderPipelines::new(&device, &config, &[camera_buffer.bind_group_layout()]);
+
+        let depth_texture = DepthTexture::new(&device, &config);
 
         Ok(Renderer {
             surface,
@@ -51,8 +55,10 @@ impl Renderer {
             config,
             size,
             window,
-            render_pipelines,
             vertex_buffers: vec![],
+            camera_buffer,
+            render_pipelines,
+            depth_texture,
         })
     }
 
@@ -71,6 +77,7 @@ impl Renderer {
         self.config.width = new_size.width;
         self.config.height = new_size.height;
         self.surface.configure(&self.device, &self.config);
+        self.depth_texture = DepthTexture::new(&self.device, &self.config);
     }
 
     pub fn create_vertex_buffer(&mut self, capacity: usize) -> BufferId {
@@ -86,11 +93,16 @@ impl Renderer {
     }
 
     pub fn update_vertex_buffer(&mut self, id: BufferId, data: &[Vertex]) -> Result<(), InvalidBufferId> {
-        let buffer = self.vertex_buffers.get_mut(id).ok_or(InvalidBufferId(id))?;
-
-        buffer.fill(&self.device, &self.queue, data);
+        self.vertex_buffers
+            .get_mut(id)
+            .ok_or(InvalidBufferId(id))?
+            .fill(&self.device, &self.queue, data);
 
         Ok(())
+    }
+
+    pub fn update_camera(&mut self, camera: &Camera, transform: &Transform) {
+        self.camera_buffer.update(camera, transform, &self.device, &self.queue);
     }
 
     async fn init_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {

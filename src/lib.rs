@@ -11,7 +11,6 @@ use game_loop::{game_loop, winit::{
 use hecs::World;
 
 use engine::Engine;
-use parking_lot::Mutex;
 use renderer::{error::RenderError, Renderer};
 
 pub use game_loop::winit::window::WindowBuilder;
@@ -21,7 +20,7 @@ pub use game_loop::winit::event::WindowEvent;
 pub struct Game {
     event_loop: Option<EventLoop<()>>,
     renderer: Renderer,
-    world: Arc<Mutex<World>>,
+    world: World,
     engine: Option<Box<dyn Engine>>,
 }
 
@@ -29,7 +28,7 @@ impl Game {
     pub fn new(window: WindowBuilder) -> anyhow::Result<Game> {
         let event_loop = EventLoop::new().unwrap();
         let window = Arc::new(window.build(&event_loop).unwrap());
-        let world = Arc::new(Mutex::new(World::new()));
+        let world = World::new();
 
         Ok(Game {
             event_loop: Some(event_loop),
@@ -51,7 +50,7 @@ impl Game {
         let event_loop = std::mem::take(&mut self.event_loop).unwrap();
         let window = self.renderer.window();
 
-        self.engine.as_mut().unwrap().init(&mut self.world.lock(), &mut self.renderer);
+        self.engine.as_mut().unwrap().init(&mut self.world, &mut self.renderer);
 
         game_loop(
             event_loop, window, self, 240, 0.1,
@@ -87,14 +86,14 @@ impl Game {
     }
 
     fn update(&mut self) {
-        self.engine.as_mut().unwrap().update(&mut self.world.lock());
+        self.engine.as_mut().unwrap().update(&mut self.world);
     }
 
     fn render(&mut self) -> Result<(), RenderError> {
-        self.engine.as_mut().unwrap().render(&mut self.world.lock(), &mut self.renderer)
+        self.engine.as_mut().unwrap().render(&mut self.world, &mut self.renderer)
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
-        self.engine.as_mut().unwrap().input(event)
+        self.engine.as_mut().unwrap().input(event, &mut self.world)
     }
 }

@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use super::pbr::mesh::Vertex;
+use crate::renderer::pbr::mesh::Vertex;
 
 pub struct Pipeline {
     shader: wgpu::ShaderModule,
@@ -14,12 +14,13 @@ impl Pipeline {
         label: &str, 
         device: &wgpu::Device, 
         config: &wgpu::SurfaceConfiguration,
+        bind_group_layouts: &[&wgpu::BindGroupLayout],
     ) -> Pipeline {
         let shader = device.create_shader_module(shader);
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some(format!("{label} Pipeline Layout").as_str()),
-            bind_group_layouts: &[],
+            bind_group_layouts,
             push_constant_ranges: &[],
         });
 
@@ -49,7 +50,13 @@ impl Pipeline {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: None, 
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState {
                 count: 1, 
                 mask: !0, 
@@ -63,6 +70,14 @@ impl Pipeline {
             layout,
             pipeline,
         }
+    }
+    
+    pub fn shader(&self) -> &wgpu::ShaderModule {
+        &self.shader
+    }
+    
+    pub fn layout(&self) -> &wgpu::PipelineLayout {
+        &self.layout
     }
 }
 
@@ -79,13 +94,18 @@ pub struct RenderPipelines {
 }
 
 impl RenderPipelines {
-    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> RenderPipelines {
+    pub fn new(
+        device: &wgpu::Device, 
+        config: &wgpu::SurfaceConfiguration,
+        bind_group_layouts: &[&wgpu::BindGroupLayout],
+    ) -> RenderPipelines {
         RenderPipelines {
             main_pipeline: Pipeline::new(
-                wgpu::include_wgsl!("shaders/main_shader.wgsl"), 
+                wgpu::include_wgsl!("../shaders/main_shader.wgsl"), 
                 "Main", 
                 device, 
-                config
+                config,
+                bind_group_layouts,
             )
         }
     }

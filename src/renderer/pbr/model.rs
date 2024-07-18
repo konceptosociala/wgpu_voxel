@@ -1,5 +1,5 @@
 use crate::renderer::{
-    buffer::BufferId,
+    hal::buffer::BufferId,
     Renderable,
 };
 

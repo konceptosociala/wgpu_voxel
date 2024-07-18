@@ -1,11 +1,14 @@
+use std::sync::Arc;
+
+use nalgebra_glm as glm;
 use hecs::Bundle;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::renderer::{
-    buffer::BufferId, 
+    hal::buffer::BufferId, 
     pbr::{
-        mesh::{Mesh, Vertex}, 
+        mesh::{Color, Mesh, Vertex}, 
         transform::Transform,
     }, 
     voxel::block::Block, 
@@ -17,14 +20,18 @@ use crate::renderer::{
 pub struct InvalidBlockCoords(pub usize, pub usize, pub usize);
 
 const VERTICES: &[Vertex] = &[
-    Vertex { position: [-0.0868241, 0.49240386, 0.0], color: [0.5, 0.0, 0.5] }, // A
-    Vertex { position: [-0.49513406, 0.06958647, 0.0], color: [0.5, 0.0, 0.5] }, // B
-    Vertex { position: [-0.21918549, -0.44939706, 0.0], color: [0.5, 0.0, 0.5] }, // C
+    Vertex { position: glm::Vec3::new(1.0, -1.0, 0.0), color: Color::new(1.0, 0.0, 0.0) },
+    Vertex { position: glm::Vec3::new(1.0, 1.0, 0.0), color: Color::new(0.0, 1.0, 0.0) },
+    Vertex { position: glm::Vec3::new(-1.0, 1.0, 0.0), color: Color::new(0.0, 0.0, 1.0) },
+    Vertex { position: glm::Vec3::new(1.0, -1.0, 0.0), color: Color::new(1.0, 0.0, 0.0) },
+    Vertex { position: glm::Vec3::new(-1.0, 1.0, 0.0), color: Color::new(0.0, 0.0, 1.0) },
+    Vertex { position: glm::Vec3::new(-1.0, -1.0, 0.0), color: Color::new(0.0, 1.0, 0.0) },
 ];
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Chunk {
     blocks: [[[Block; Self::CHUNK_SIZE]; Self::CHUNK_SIZE]; Self::CHUNK_SIZE],
+    palette: Arc<[Color]>,
     #[serde(skip)]
     vertex_buffer: Option<BufferId>,
 }
@@ -32,16 +39,26 @@ pub struct Chunk {
 impl Chunk {
     pub const CHUNK_SIZE: usize = 32;
 
-    pub fn new() -> Chunk {
-        Chunk::default()
+    pub fn new(palette: Arc<[Color]>) -> Chunk {
+        Chunk {
+            palette,
+            ..Default::default()
+        }
     }
 
-    pub fn get_block(&self, x: usize, y: usize, z: usize) -> Option<Block> {
+    pub fn get_block(&self, x: usize, y: usize, z: usize) -> Option<&Block> {
         self.blocks.get(x).and_then(
             |arr| arr.get(y).and_then(
                 |arr| arr.get(z)
             )
-        ).copied()
+        )
+    }
+
+    pub fn check_block(&self, x: usize, y: usize, z: usize) -> bool {
+        self
+            .get_block(x, y, z)
+            .filter(|b| b.is_active())
+            .is_some()
     }
 
     pub fn set_block(&mut self, block: Block, x: usize, y: usize, z: usize) -> Result<(), InvalidBlockCoords> {
@@ -56,7 +73,65 @@ impl Chunk {
 
     // TODO: generate mesh
     pub fn generate_mesh(&self) -> Mesh {
-        Mesh { vertex_data: VERTICES.to_vec() }
+        let mut mesh = Mesh::default();
+
+        for x in 0..Self::CHUNK_SIZE {
+            for y in 0..Self::CHUNK_SIZE {
+                for z in 0..Self::CHUNK_SIZE {
+                    let block = self.get_block(x, y, z).unwrap();
+
+                    if !block.is_active() {
+                        continue;
+                    }
+
+                    let color = *self.palette
+                        .get(block.color() as usize)
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "Wrong palette index `{}` in palette with size `{}`", 
+                                block.color(), 
+                                self.palette.len()
+                            );
+                        });
+
+                    // LEFT
+                    if x > 0 && !self.check_block(x - 1, y, z) {
+                        //
+                    }
+
+                    // RIGHT
+                    if !self.check_block(x + 1, y, z) {
+                        //
+                    }
+
+                    // FRONT
+                    if !self.check_block(x, y, z + 1) {
+                        mesh.vertex_data.extend_from_slice(&[
+                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                        ]);
+                    }
+
+                    if !self.check_block(x, y, z - 1) {
+                        mesh.vertex_data.extend_from_slice(&[
+                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                        ]);
+                    }
+                }
+            }
+        }
+
+        mesh
+        // Mesh { vertex_data: VERTICES.into() }
     }
 }
 
@@ -81,6 +156,7 @@ impl Default for Chunk {
     fn default() -> Self {
         Chunk {
             blocks: [[[Block::default(); Self::CHUNK_SIZE]; Self::CHUNK_SIZE]; Self::CHUNK_SIZE],
+            palette: Arc::new([]),
             vertex_buffer: None,
         }
     }

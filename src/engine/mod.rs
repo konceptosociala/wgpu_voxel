@@ -8,7 +8,7 @@ pub trait Engine {
 
     fn update(&mut self, world: &mut World);
 
-    fn input(&mut self, event: &WindowEvent) -> bool;
+    fn input(&mut self, event: &WindowEvent, world: &mut World) -> bool;
 
     fn render(&mut self, world: &mut World, renderer: &mut Renderer) -> Result<(), RenderError>;
 }

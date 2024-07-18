@@ -10,6 +10,8 @@ pub enum RenderError {
     SurfaceError(String),
     #[error("Render components are not set up: {0:?}")]
     SetupError(Vec<&'static str>),
+    #[error("Error loading vox file")]
+    LoadVoxError(&'static str),
 }
 
 impl From<wgpu::SurfaceError> for RenderError {

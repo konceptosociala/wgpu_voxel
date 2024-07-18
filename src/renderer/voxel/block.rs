@@ -3,20 +3,20 @@ use serde::{Deserialize, Serialize};
 #[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
     active: bool,
-    material_id: u8,
+    color_id: u8,
 }
 
 impl Block {
-    pub fn new(active: bool, material_id: u8) -> Block {
-        Block { active, material_id }
+    pub fn new(active: bool, color_id: u8) -> Block {
+        Block { active, color_id }
     }
 
-    pub fn material(&self) -> u8 {
-        self.material_id
+    pub fn color(&self) -> u8 {
+        self.color_id
     }
 
-    pub fn set_material(&mut self, material_id: u8) {
-        self.material_id = material_id;
+    pub fn set_color(&mut self, color_id: u8) {
+        self.color_id = color_id;
     }
 
     pub fn is_active(&self) -> bool {
