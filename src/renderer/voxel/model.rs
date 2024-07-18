@@ -107,9 +107,9 @@ impl VoxelModel {
                     chunk,
                     transform: Transform {
                         translation: glm::vec3(
-                            (32 * key.0) as f32,
-                            (32 * key.1) as f32,
-                            (32 * key.2) as f32,
+                            chunks_x_size as f32 - (32 * key.0) as f32,
+                            chunks_y_size as f32 - (32 * key.1) as f32,
+                            chunks_z_size as f32 - (32 * key.2) as f32,
                         ),
                         ..Default::default()
                     }

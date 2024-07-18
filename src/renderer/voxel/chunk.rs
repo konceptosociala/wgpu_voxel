@@ -19,15 +19,6 @@ use crate::renderer::{
 #[error("Invalid block coords ({0}, {1}, {2}) in chunk")]
 pub struct InvalidBlockCoords(pub usize, pub usize, pub usize);
 
-const VERTICES: &[Vertex] = &[
-    Vertex { position: glm::Vec3::new(1.0, -1.0, 0.0), color: Color::new(1.0, 0.0, 0.0) },
-    Vertex { position: glm::Vec3::new(1.0, 1.0, 0.0), color: Color::new(0.0, 1.0, 0.0) },
-    Vertex { position: glm::Vec3::new(-1.0, 1.0, 0.0), color: Color::new(0.0, 0.0, 1.0) },
-    Vertex { position: glm::Vec3::new(1.0, -1.0, 0.0), color: Color::new(1.0, 0.0, 0.0) },
-    Vertex { position: glm::Vec3::new(-1.0, 1.0, 0.0), color: Color::new(0.0, 0.0, 1.0) },
-    Vertex { position: glm::Vec3::new(-1.0, -1.0, 0.0), color: Color::new(0.0, 1.0, 0.0) },
-];
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Chunk {
     blocks: [[[Block; Self::CHUNK_SIZE]; Self::CHUNK_SIZE]; Self::CHUNK_SIZE],
@@ -94,36 +85,75 @@ impl Chunk {
                             );
                         });
 
-                    // LEFT
-                    if x > 0 && !self.check_block(x - 1, y, z) {
-                        //
-                    }
-
-                    // RIGHT
-                    if !self.check_block(x + 1, y, z) {
-                        //
-                    }
-
-                    // FRONT
-                    if !self.check_block(x, y, z + 1) {
-                        mesh.vertex_data.extend_from_slice(&[
-                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
-                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
-                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
-                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
-                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
-                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                    // Front face
+                    if z == 0 || !self.check_block(x, y, z - 1) {
+                        mesh.vertex_data.extend(&[
+                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32), color },
                         ]);
                     }
 
-                    if !self.check_block(x, y, z - 1) {
-                        mesh.vertex_data.extend_from_slice(&[
-                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
-                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
-                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
-                            Vertex { position: glm::Vec3::new((1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
-                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
-                            Vertex { position: glm::Vec3::new((-1.0 + x as f32)/100.0, (-1.0 + y as f32)/100.0, (0.0 + z as f32)/100.0), color },
+                    // Back face
+                    if !self.check_block(x, y, z + 1) {
+                        mesh.vertex_data.extend(&[
+                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32 + 1.0), color },
+                        ]);
+                    }
+
+                    // Left face
+                    if x == 0 || !self.check_block(x - 1, y, z) {
+                        mesh.vertex_data.extend(&[
+                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32 + 1.0), color },
+                        ]);
+                    }
+
+                    // Right face
+                    if !self.check_block(x + 1, y, z) {
+                        mesh.vertex_data.extend(&[
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32 + 1.0), color },
+                        ]);
+                    }
+
+                    // Bottom face
+                    if y == 0 || !self.check_block(x, y - 1, z) {
+                        mesh.vertex_data.extend(&[
+                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32 + 1.0), color },
+                        ]);
+                    }
+
+                    // Top face
+                    if !self.check_block(x, y + 1, z) {
+                        mesh.vertex_data.extend(&[
+                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32), color },
+                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32 + 1.0), color },
+                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32 + 1.0), color },
                         ]);
                     }
                 }

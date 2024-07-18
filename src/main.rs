@@ -1,4 +1,4 @@
-use game_loop::winit::{event::KeyEvent, keyboard::{KeyCode, PhysicalKey}};
+use game_loop::winit::{event::{KeyEvent, MouseScrollDelta}, keyboard::{KeyCode, PhysicalKey}};
 use nalgebra_glm as glm;
 use hecs::World;
 use wgpu_voxel::{
@@ -18,11 +18,21 @@ use wgpu_voxel::{
     Game, PhysicalSize, WindowBuilder, WindowEvent,
 };
 
-struct MyGame;
+#[derive(Clone, Default, Debug)]
+struct CameraConfiguration {
+    limit: (f32, f32),
+    target_x: f32,
+    target_y: f32,
+    latest_pos: glm::Vec2,
+}
 
-impl Engine for MyGame {
+struct VoxelViewer {
+    camera_config: CameraConfiguration,
+}
+
+impl Engine for VoxelViewer {
     fn init(&mut self, world: &mut World, renderer: &mut Renderer) {
-        let models = VoxelModel::load_vox("model.vox").unwrap();
+        let models = VoxelModel::load_vox("model1.vox").unwrap();
         for model in models {
             for mut chunk_bundle in model.into_chunks().into_iter() {
                 chunk_bundle.chunk.update(renderer);
@@ -43,13 +53,40 @@ impl Engine for MyGame {
     }
 
     fn input(&mut self, event: &WindowEvent, world: &mut World) -> bool { 
-        for (_, (_, t)) in &mut world.query::<(&Camera, &mut Transform)>() {
+        for (_, (_, camera_transform)) in &mut world.query::<(&Camera, &mut Transform)>() {
             match event {
                 WindowEvent::CursorMoved { position, .. } => {
-                    
-                },
-                WindowEvent::MouseWheel { delta, .. } => {
+                    let (delta_x, delta_y) = {
+                        if self.camera_config.latest_pos == glm::Vec3::default() {
+                            (0.0, 0.0)
+                        } else {
+                            (
+                                position.x as f32 - self.camera_config.latest_pos.x,
+                                position.y as f32 - self.camera_config.latest_pos.y,
+                            )
+                        }
+                    };
 
+                    self.camera_config.latest_pos = glm::vec2(position.x as f32, position.y as f32);
+
+                    let local_x = camera_transform.local_x();
+
+                    let (tx, ty) = (self.camera_config.target_x, self.camera_config.target_y);
+                    
+                    self.camera_config.target_x += delta_y * 0.005;
+                    self.camera_config.target_y -= delta_x * 0.005;
+
+                    self.camera_config.target_x = self.camera_config.target_x.clamp(
+                        self.camera_config.limit.0.to_radians(), 
+                        self.camera_config.limit.1.to_radians(),
+                    );
+
+                    camera_transform.rotation *=
+                        glm::quat_angle_axis(self.camera_config.target_x - tx, &local_x) *
+                        glm::quat_angle_axis(self.camera_config.target_y - ty, &glm::Vec3::y());
+                },
+                WindowEvent::MouseWheel { delta: MouseScrollDelta::LineDelta(_, delta), .. } => {
+                    camera_transform.translation.z = (camera_transform.translation.z + delta / 10.0).min(-0.5);
                 },
                 _ => return false,
             }
@@ -120,7 +157,12 @@ fn main() -> anyhow::Result<()> {
             .with_title("Wgpu Voxel")
             .with_inner_size(PhysicalSize::new(800, 600)),
     )?;
-    game.set_engine(Box::new(MyGame));
+    game.set_engine(Box::new(VoxelViewer {
+        camera_config: CameraConfiguration {
+            limit: (-85.0, 85.0),
+            ..Default::default()
+        },
+    }));
     game.run()?;
 
     Ok(())

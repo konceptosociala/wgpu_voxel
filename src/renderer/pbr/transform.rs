@@ -25,6 +25,36 @@ impl Transform {
         Transform { rotation, ..Default::default() }
     }
 
+    pub fn local_x(&self) -> glm::Vec3 {
+        let m = self.to_matrices().0;
+        
+        glm::vec3(
+            m[(0, 0)],
+            m[(0, 1)], 
+            m[(0, 2)]
+        )
+    }
+    
+    pub fn local_y(&self) -> glm::Vec3 {
+        let m = self.to_matrices().0;
+        
+        glm::vec3(
+            m[(1, 0)],
+            m[(1, 1)], 
+            m[(1, 2)]
+        )
+    }
+    
+    pub fn local_z(&self) -> glm::Vec3 {
+        let m = self.to_matrices().0;
+        
+        glm::vec3(
+            m[(2, 0)],
+            m[(2, 1)], 
+            m[(2, 2)]
+        )
+    }
+
     pub fn to_matrices(&self) -> (glm::Mat4, glm::Mat4) {
         let matrix = glm::Mat4::identity()
             * glm::translation(&self.translation)
