@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::Path, sync::Arc};
 use nalgebra_glm as glm;
 use serde::{Deserialize, Serialize};
 
-use crate::renderer::{error::RenderError, pbr::{mesh::Color, model::Model, transform::Transform}};
+use crate::renderer::{error::RenderError, pbr::{mesh::Color, transform::Transform}};
 
 use super::{block::Block, chunk::{Chunk, ChunkBundle}};
 
@@ -116,9 +116,5 @@ impl VoxelModel {
                 }
             })
             .collect()
-    }
-
-    pub fn into_model(self) -> Model {
-        todo!();
     }
 }

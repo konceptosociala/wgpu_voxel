@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use nalgebra_glm as glm;
 use hecs::Bundle;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -8,7 +7,7 @@ use thiserror::Error;
 use crate::renderer::{
     hal::buffer::BufferId, 
     pbr::{
-        mesh::{Color, Mesh, Vertex}, 
+        mesh::{Color, Mesh}, 
         transform::Transform,
     }, 
     voxel::block::Block, 
@@ -25,7 +24,6 @@ pub struct Chunk {
     palette: Arc<[Color]>,
     #[serde(skip)]
     vertex_buffer: Option<BufferId>,
-    transform_buffer: Option<BufferId>,
 }
 
 impl Chunk {
@@ -88,74 +86,32 @@ impl Chunk {
 
                     // Front face
                     if z == 0 || !self.check_block(x, y, z - 1) {
-                        mesh.vertex_data.extend(&[
-                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32), color },
-                        ]);
+                        mesh.add_front_face(x, y, z, color)
                     }
 
                     // Back face
                     if !self.check_block(x, y, z + 1) {
-                        mesh.vertex_data.extend(&[
-                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32 + 1.0), color },
-                        ]);
+                        mesh.add_back_face(x, y, z, color);
                     }
 
                     // Left face
                     if x == 0 || !self.check_block(x - 1, y, z) {
-                        mesh.vertex_data.extend(&[
-                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32 + 1.0), color },
-                        ]);
+                        mesh.add_left_face(x, y, z, color);
                     }
 
                     // Right face
                     if !self.check_block(x + 1, y, z) {
-                        mesh.vertex_data.extend(&[
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32 + 1.0), color },
-                        ]);
+                        mesh.add_right_face(x, y, z, color);
                     }
 
                     // Bottom face
                     if y == 0 || !self.check_block(x, y - 1, z) {
-                        mesh.vertex_data.extend(&[
-                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32, z as f32 + 1.0), color },
-                        ]);
+                        mesh.add_bottom_face(x, y, z, color);
                     }
 
                     // Top face
                     if !self.check_block(x, y + 1, z) {
-                        mesh.vertex_data.extend(&[
-                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32), color },
-                            Vertex { position: glm::vec3(x as f32, y as f32 + 1.0, z as f32 + 1.0), color },
-                            Vertex { position: glm::vec3(x as f32 + 1.0, y as f32 + 1.0, z as f32 + 1.0), color },
-                        ]);
+                        mesh.add_top_face(x, y, z, color);
                     }
                 }
             }
@@ -188,7 +144,6 @@ impl Default for Chunk {
             blocks: [[[Block::default(); Self::CHUNK_SIZE]; Self::CHUNK_SIZE]; Self::CHUNK_SIZE],
             palette: Arc::new([]),
             vertex_buffer: None,
-            transform_buffer: None,
         }
     }
 }

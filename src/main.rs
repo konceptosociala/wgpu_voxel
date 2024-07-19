@@ -1,6 +1,9 @@
-use game_loop::winit::{event::{ElementState, KeyEvent, MouseScrollDelta}, keyboard::{KeyCode, PhysicalKey}};
+use std::path::PathBuf;
+
+use clap::Parser;
+use game_loop::winit::event::MouseScrollDelta;
 use nalgebra_glm as glm;
-use hecs::{With, World};
+use hecs::World;
 use wgpu_voxel::{
     engine::Engine, 
     renderer::{
@@ -28,11 +31,12 @@ struct CameraConfiguration {
 
 struct VoxelViewer {
     camera_config: CameraConfiguration,
+    model_path: PathBuf,
 }
 
 impl Engine for VoxelViewer {
     fn init(&mut self, world: &mut World, renderer: &mut Renderer) {
-        let models = VoxelModel::load_vox("model1.vox").unwrap();
+        let models = VoxelModel::load_vox(&self.model_path).unwrap();
         for model in models {
             for mut chunk_bundle in model.into_chunks().into_iter() {
                 chunk_bundle.chunk.update(renderer);
@@ -52,30 +56,6 @@ impl Engine for VoxelViewer {
     fn update(&mut self, _world: &mut World) {}
 
     fn input(&mut self, event: &WindowEvent, world: &mut World) -> bool { 
-        let entities = world.query::<With<&mut Transform, &Chunk>>()
-            .iter()
-            .map(|(e, _)| e)
-            .collect::<Vec<_>>();
-
-        if let WindowEvent::KeyboardInput { event: KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(code), .. } ,.. } = event {
-            match code {
-                KeyCode::Digit0 => world.despawn(entities[0]),
-                KeyCode::Digit1 => world.despawn(entities[1]),
-                KeyCode::Digit2 => world.despawn(entities[2]),
-                KeyCode::Digit3 => world.despawn(entities[3]),
-                KeyCode::Digit4 => world.despawn(entities[4]),
-                KeyCode::Digit5 => world.despawn(entities[5]),
-                KeyCode::Digit6 => world.despawn(entities[6]),
-                KeyCode::Digit7 => world.despawn(entities[7]),
-                KeyCode::Digit8 => world.despawn(entities[8]),
-                KeyCode::Digit9 => world.despawn(entities[9]),
-                KeyCode::KeyQ => world.despawn(entities[10]),
-                KeyCode::KeyW => world.despawn(entities[11]),
-                KeyCode::KeyE => world.despawn(entities[12]),
-                _ => Ok(()),
-            }.unwrap();
-        }
-
         for (_, (_, camera_transform)) in &mut world.query::<(&Camera, &mut Transform)>() {
             match event {
                 WindowEvent::CursorMoved { position, .. } => {
@@ -109,7 +89,7 @@ impl Engine for VoxelViewer {
                         glm::quat_angle_axis(self.camera_config.target_y - ty, &glm::Vec3::y());
                 },
                 WindowEvent::MouseWheel { delta: MouseScrollDelta::LineDelta(_, delta), .. } => {
-                    camera_transform.translation.z = (camera_transform.translation.z + delta / 10.0).min(-0.5);
+                    camera_transform.translation.z = (camera_transform.translation.z + delta).min(-0.5);
                 },
                 _ => return false,
             }
@@ -178,7 +158,16 @@ impl Engine for VoxelViewer {
     }
 }
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = "MagicaVoxel model viewer written with wgpu")]
+pub struct Args {
+    #[arg(short, long)]
+    path: PathBuf,
+}
+
 fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+
     let mut game = Game::new(
         WindowBuilder::new()
             .with_title("Wgpu Voxel")
@@ -189,6 +178,7 @@ fn main() -> anyhow::Result<()> {
             limit: (-85.0, 85.0),
             ..Default::default()
         },
+        model_path: args.path,
     }));
     game.run()?;
 

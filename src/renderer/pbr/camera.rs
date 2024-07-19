@@ -2,7 +2,7 @@ use bytemuck::{Pod, Zeroable};
 use nalgebra_glm as glm;
 use serde::{Deserialize, Serialize};
 
-use crate::renderer::hal::buffer::Buffer;
+use crate::renderer::hal::{buffer::Buffer, Padding};
 
 use super::transform::Transform;
 
@@ -62,13 +62,18 @@ impl Camera {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod)]
 pub struct CameraUniform {
+    position: glm::Vec3,
+    _padding: Padding,
     view_projection: glm::Mat4,
 }
 
 impl Default for CameraUniform {
     fn default() -> Self {
         CameraUniform {
+            position: glm::Vec3::identity(),
             view_projection: glm::Mat4::identity(),
+            
+            _padding: Padding::default(),
         }
     }
 }
@@ -76,7 +81,9 @@ impl Default for CameraUniform {
 impl CameraUniform {
     pub fn new(camera: &Camera, transform: &Transform) -> CameraUniform {
         CameraUniform {
+            position: transform.translation,
             view_projection: camera.build_view_projection(transform),
+            _padding: Padding::default(),
         }
     }
 }
