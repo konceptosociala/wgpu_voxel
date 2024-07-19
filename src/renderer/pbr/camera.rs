@@ -74,17 +74,14 @@ impl Default for CameraUniform {
 }
 
 impl CameraUniform {
-    pub fn new() -> CameraUniform {
-        Self::default()
-    }
-
-    pub fn update_view_projection(&mut self, camera: &Camera, transform: &Transform) {
-        self.view_projection = camera.build_view_projection(transform);
+    pub fn new(camera: &Camera, transform: &Transform) -> CameraUniform {
+        CameraUniform {
+            view_projection: camera.build_view_projection(transform),
+        }
     }
 }
 
 pub struct CameraBuffer {
-    uniform: CameraUniform,
     buffer: Buffer<CameraUniform>,
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
@@ -92,13 +89,12 @@ pub struct CameraBuffer {
 
 impl CameraBuffer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> CameraBuffer {
-        let uniform = CameraUniform::new();
         let mut buffer = Buffer::new(
             device, 
             1, 
             wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST
         );
-        buffer.fill(device, queue, &[uniform]);
+        buffer.fill(device, queue, &[CameraUniform::default()]);
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Camera bind group layout"),
@@ -126,7 +122,6 @@ impl CameraBuffer {
         });
         
         CameraBuffer {
-            uniform,
             buffer,
             bind_group_layout,
             bind_group,
@@ -134,14 +129,13 @@ impl CameraBuffer {
     }
 
     pub fn update(
-        &mut self, 
+        &self, 
         camera: &Camera,
         transform: &Transform,
-        device: &wgpu::Device, 
         queue: &wgpu::Queue
     ) {
-        self.uniform.update_view_projection(camera, transform);
-        self.buffer.fill(device, queue, &[self.uniform]);
+        self.buffer.fill_exact(queue, &[CameraUniform::new(camera, transform)])
+            .expect("Can't fill camera buffer");
     }
     
     pub fn buffer(&self) -> &Buffer<CameraUniform> {

@@ -1,3 +1,4 @@
+use bytemuck::{Pod, Zeroable};
 use serde::{Serialize, Deserialize};
 use nalgebra_glm as glm;
 
@@ -26,7 +27,7 @@ impl Transform {
     }
 
     pub fn local_x(&self) -> glm::Vec3 {
-        let m = self.to_matrices().0;
+        let m = self.uniform().transform_matrix;
         
         glm::vec3(
             m[(0, 0)],
@@ -36,7 +37,7 @@ impl Transform {
     }
     
     pub fn local_y(&self) -> glm::Vec3 {
-        let m = self.to_matrices().0;
+        let m = self.uniform().transform_matrix;
         
         glm::vec3(
             m[(1, 0)],
@@ -46,7 +47,7 @@ impl Transform {
     }
     
     pub fn local_z(&self) -> glm::Vec3 {
-        let m = self.to_matrices().0;
+        let m = self.uniform().transform_matrix;
         
         glm::vec3(
             m[(2, 0)],
@@ -55,14 +56,17 @@ impl Transform {
         )
     }
 
-    pub fn to_matrices(&self) -> (glm::Mat4, glm::Mat4) {
-        let matrix = glm::Mat4::identity()
+    pub fn uniform(&self) -> TransformUniform {
+        let transform_matrix = glm::Mat4::identity()
             * glm::translation(&self.translation)
             * glm::quat_cast(&self.rotation)
             * glm::scaling(&glm::vec3(self.scale, self.scale, self.scale));
 
-        let inversed = matrix.try_inverse().unwrap();
-        (matrix, inversed)
+        let inverse_matrix = transform_matrix.try_inverse().unwrap();
+        TransformUniform {
+            transform_matrix,
+            inverse_matrix,
+        }
     }
 }
 
@@ -73,5 +77,27 @@ impl Default for Transform {
             rotation: glm::Quat::identity(),
             scale: 1.0,
         }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
+pub struct TransformUniform {
+    transform_matrix: glm::Mat4,
+    inverse_matrix: glm::Mat4,
+}
+
+impl Default for TransformUniform {
+    fn default() -> Self {
+        TransformUniform {
+            transform_matrix: glm::Mat4::identity(),
+            inverse_matrix: glm::Mat4::identity().try_inverse().unwrap(),
+        }
+    }
+}
+
+impl TransformUniform {
+    pub fn new(transform: &Transform) -> TransformUniform {
+        transform.uniform()
     }
 }

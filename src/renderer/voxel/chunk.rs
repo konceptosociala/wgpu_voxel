@@ -25,6 +25,7 @@ pub struct Chunk {
     palette: Arc<[Color]>,
     #[serde(skip)]
     vertex_buffer: Option<BufferId>,
+    transform_buffer: Option<BufferId>,
 }
 
 impl Chunk {
@@ -161,7 +162,6 @@ impl Chunk {
         }
 
         mesh
-        // Mesh { vertex_data: VERTICES.into() }
     }
 }
 
@@ -188,6 +188,7 @@ impl Default for Chunk {
             blocks: [[[Block::default(); Self::CHUNK_SIZE]; Self::CHUNK_SIZE]; Self::CHUNK_SIZE],
             palette: Arc::new([]),
             vertex_buffer: None,
+            transform_buffer: None,
         }
     }
 }

@@ -12,6 +12,8 @@ pub enum RenderError {
     SetupError(Vec<&'static str>),
     #[error("Error loading vox file")]
     LoadVoxError(&'static str),
+    #[error("Buffer with capacity `{0}` is overflowed")]
+    BufferOverflow(usize),
 }
 
 impl From<wgpu::SurfaceError> for RenderError {

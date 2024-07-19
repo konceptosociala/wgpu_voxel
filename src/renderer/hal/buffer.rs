@@ -6,6 +6,8 @@ use bytemuck::Pod;
 use pretty_type_name::pretty_type_name;
 use thiserror::Error;
 
+use crate::renderer::error::RenderError;
+
 pub type BufferId = usize;
 
 #[derive(Debug, Error)]
@@ -28,11 +30,13 @@ impl<T: Pod> Buffer<T> {
         }
     }
 
-    pub fn fill(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, data: &[T]) {
-        let bytes_to_write = size_of_val(data);
-        if bytes_to_write > self.capacity * size_of::<T>() {
-            self.inner = Arc::new(Buffer::<T>::new_inner(device, bytes_to_write, self.inner.usage()));
-            self.capacity = data.len();
+    pub fn fill_exact(
+        &self, 
+        queue: &wgpu::Queue, 
+        data: &[T]
+    ) -> Result<(), RenderError> {
+        if data.len() > self.capacity {
+            return Err(RenderError::BufferOverflow(data.len()));
         }
 
         if !data.is_empty() {
@@ -40,8 +44,20 @@ impl<T: Pod> Buffer<T> {
                 &self.inner, 
                 0, 
                 bytemuck::cast_slice(data)
-            )
+            );
         }
+
+        Ok(())
+    }
+
+    pub fn fill(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, data: &[T]) {
+        let bytes_to_write = size_of_val(data);
+        if bytes_to_write > self.capacity * size_of::<T>() {
+            self.inner = Arc::new(Buffer::<T>::new_inner(device, bytes_to_write, self.inner.usage()));
+            self.capacity = data.len();
+        }
+
+        self.fill_exact(queue, data).unwrap();  
     }
     
     pub fn capacity(&self) -> usize {

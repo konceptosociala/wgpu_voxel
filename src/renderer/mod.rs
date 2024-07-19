@@ -44,7 +44,9 @@ impl Renderer {
         let config = Self::init_config(surface_format, size, surface_caps);
 
         let camera_buffer = CameraBuffer::new(&device, &queue);
-        let render_pipelines = RenderPipelines::new(&device, &config, &[camera_buffer.bind_group_layout()]);
+        let render_pipelines = RenderPipelines::new(&device, &config, &[
+            camera_buffer.bind_group_layout(),
+        ]);
 
         let depth_texture = DepthTexture::new(&device, &config);
 
@@ -101,15 +103,18 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn update_camera(&mut self, camera: &Camera, transform: &Transform) {
-        self.camera_buffer.update(camera, transform, &self.device, &self.queue);
+    pub fn update_camera(&self, camera: &Camera, transform: &Transform) {
+        self.camera_buffer.update(camera, transform, &self.queue);
     }
 
     async fn init_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
         adapter.request_device(
             &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
+                required_features: wgpu::Features::PUSH_CONSTANTS,
+                required_limits: wgpu::Limits {
+                    max_push_constant_size: 128,
+                    ..Default::default()
+                },
                 label: Some("Logical device"),
             },
             None,

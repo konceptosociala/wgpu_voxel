@@ -17,8 +17,8 @@ impl From<dot_vox::Size> for Size {
     fn from(value: dot_vox::Size) -> Self {
         Size {
             x: value.x as usize,
-            y: value.y as usize,
-            z: value.z as usize,
+            y: value.z as usize,
+            z: value.y as usize,
         }
     }
 }
@@ -55,7 +55,7 @@ impl VoxelModel {
                 }
 
                 for voxel in m.voxels.iter() {
-                    let block = blocks.get_mut(&(voxel.x, voxel.y, voxel.z)).unwrap();
+                    let block = blocks.get_mut(&(voxel.x, voxel.z, voxel.y)).unwrap();
                     block.set_active(true);
                     block.set_color(voxel.i);
                 }
@@ -107,9 +107,9 @@ impl VoxelModel {
                     chunk,
                     transform: Transform {
                         translation: glm::vec3(
-                            chunks_x_size as f32 - (32 * key.0) as f32,
-                            chunks_y_size as f32 - (32 * key.1) as f32,
-                            chunks_z_size as f32 - (32 * key.2) as f32,
+                            ((key.0 as usize) * Chunk::CHUNK_SIZE) as f32,
+                            ((key.1 as usize) * Chunk::CHUNK_SIZE) as f32,
+                            ((key.2 as usize) * Chunk::CHUNK_SIZE) as f32,
                         ),
                         ..Default::default()
                     }

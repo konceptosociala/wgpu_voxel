@@ -1,6 +1,6 @@
-use game_loop::winit::{event::{KeyEvent, MouseScrollDelta}, keyboard::{KeyCode, PhysicalKey}};
+use game_loop::winit::{event::{ElementState, KeyEvent, MouseScrollDelta}, keyboard::{KeyCode, PhysicalKey}};
 use nalgebra_glm as glm;
-use hecs::World;
+use hecs::{With, World};
 use wgpu_voxel::{
     engine::Engine, 
     renderer::{
@@ -45,14 +45,37 @@ impl Engine for VoxelViewer {
                 CameraType::LookAt, 
                 renderer.size.width as f32 / renderer.size.height as f32,
             ),
-            Transform::new_from_translation(glm::vec3(0.0, 0.0, -3.0)),
+            Transform::new_from_translation(glm::vec3(0.0, 0.0, -75.0)),
         ));
     }
 
-    fn update(&mut self, _world: &mut World) {
-    }
+    fn update(&mut self, _world: &mut World) {}
 
     fn input(&mut self, event: &WindowEvent, world: &mut World) -> bool { 
+        let entities = world.query::<With<&mut Transform, &Chunk>>()
+            .iter()
+            .map(|(e, _)| e)
+            .collect::<Vec<_>>();
+
+        if let WindowEvent::KeyboardInput { event: KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(code), .. } ,.. } = event {
+            match code {
+                KeyCode::Digit0 => world.despawn(entities[0]),
+                KeyCode::Digit1 => world.despawn(entities[1]),
+                KeyCode::Digit2 => world.despawn(entities[2]),
+                KeyCode::Digit3 => world.despawn(entities[3]),
+                KeyCode::Digit4 => world.despawn(entities[4]),
+                KeyCode::Digit5 => world.despawn(entities[5]),
+                KeyCode::Digit6 => world.despawn(entities[6]),
+                KeyCode::Digit7 => world.despawn(entities[7]),
+                KeyCode::Digit8 => world.despawn(entities[8]),
+                KeyCode::Digit9 => world.despawn(entities[9]),
+                KeyCode::KeyQ => world.despawn(entities[10]),
+                KeyCode::KeyW => world.despawn(entities[11]),
+                KeyCode::KeyE => world.despawn(entities[12]),
+                _ => Ok(()),
+            }.unwrap();
+        }
+
         for (_, (_, camera_transform)) in &mut world.query::<(&Camera, &mut Transform)>() {
             match event {
                 WindowEvent::CursorMoved { position, .. } => {
@@ -106,11 +129,6 @@ impl Engine for VoxelViewer {
         let mut encoder = renderer.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         {
-            for (_, (camera, transform)) in &mut world.query::<(&mut Camera, &Transform)>() {
-                camera.set_aspect(renderer.size.width as f32 / renderer.size.height as f32);
-                renderer.update_camera(camera, transform);
-            }
-
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render pass"),
                 color_attachments: &[
@@ -135,10 +153,19 @@ impl Engine for VoxelViewer {
                 timestamp_writes: None,
             }); 
 
-            render_pass.set_pipeline(&renderer.render_pipelines.main_pipeline);
-            render_pass.set_bind_group(0, renderer.camera_buffer.bind_group(), &[]);
+            for (_, (camera, transform)) in &mut world.query::<(&mut Camera, &Transform)>() {
+                camera.set_aspect(renderer.size.width as f32 / renderer.size.height as f32);
+                renderer.update_camera(camera, transform);
+            }
     
-            for (_, (chunk, _)) in &mut world.query::<(&Chunk, &Transform)>() {
+            for (_, (chunk, transform)) in &mut world.query::<(&Chunk, &Transform)>() {
+                render_pass.set_pipeline(&renderer.render_pipelines.main_pipeline);
+                render_pass.set_bind_group(0, renderer.camera_buffer.bind_group(), &[]);
+                render_pass.set_push_constants(
+                    wgpu::ShaderStages::VERTEX,
+                    0,
+                    bytemuck::cast_slice(&[transform.uniform()]),
+                );
                 render_pass.set_vertex_buffer(0, renderer.vertex_buffers[chunk.vertex_buffer()].inner.slice(..)); 
                 render_pass.draw(0..renderer.vertex_buffers[chunk.vertex_buffer()].capacity() as u32, 0..1);
             }
