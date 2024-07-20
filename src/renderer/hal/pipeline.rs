@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{collections::HashMap, ops::Deref};
 
 use crate::renderer::pbr::mesh::Vertex;
 
@@ -10,7 +10,7 @@ pub struct Pipeline {
 
 impl Pipeline {
     pub fn new(
-        shader: wgpu::ShaderModuleDescriptor, 
+        shader: wgpu::ShaderModuleDescriptor<'_>, 
         label: &str, 
         device: &wgpu::Device, 
         config: &wgpu::SurfaceConfiguration,
@@ -92,8 +92,13 @@ impl Deref for Pipeline {
     }
 }
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PipelineKey {
+    MainPipeline,
+}
+
 pub struct RenderPipelines {
-    pub main_pipeline: Pipeline,
+    pipelines: HashMap<PipelineKey, Pipeline>,
 }
 
 impl RenderPipelines {
@@ -103,13 +108,22 @@ impl RenderPipelines {
         bind_group_layouts: &[&wgpu::BindGroupLayout],
     ) -> RenderPipelines {
         RenderPipelines {
-            main_pipeline: Pipeline::new(
-                wgpu::include_wgsl!("../shaders/main_shader.wgsl"), 
-                "Main", 
-                device, 
-                config,
-                bind_group_layouts,
-            )
+            pipelines: HashMap::from([
+                (
+                    PipelineKey::MainPipeline,
+                    Pipeline::new(
+                        wgpu::include_wgsl!("../shaders/main_shader.wgsl"), 
+                        "Main", 
+                        device, 
+                        config,
+                        bind_group_layouts,
+                    ),
+                )
+            ])
         }
+    }
+
+    pub fn get(&self, key: &PipelineKey) -> &Pipeline {
+        self.pipelines.get(key).unwrap()
     }
 }

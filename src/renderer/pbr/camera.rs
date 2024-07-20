@@ -53,7 +53,7 @@ impl Camera {
 
         OPENGL_TO_WGPU_MATRIX * projection * view
     }
-    
+
     pub fn set_aspect(&mut self, aspect: f32) {
         self.aspect = aspect;
     }

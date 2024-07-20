@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::Path, sync::Arc};
 use nalgebra_glm as glm;
 use serde::{Deserialize, Serialize};
 
-use crate::renderer::{error::RenderError, pbr::{mesh::Color, transform::Transform}};
+use crate::renderer::{error::RenderError, pbr::{transform::Transform, Color}};
 
 use super::{block::Block, chunk::{Chunk, ChunkBundle}};
 
@@ -107,9 +107,9 @@ impl VoxelModel {
                     chunk,
                     transform: Transform {
                         translation: glm::vec3(
-                            ((key.0 as usize) * Chunk::CHUNK_SIZE) as f32,
-                            ((key.1 as usize) * Chunk::CHUNK_SIZE) as f32,
-                            ((key.2 as usize) * Chunk::CHUNK_SIZE) as f32,
+                            ((key.0 as usize) * Chunk::CHUNK_SIZE) as f32 - (self.size.x / 2) as f32,
+                            ((key.1 as usize) * Chunk::CHUNK_SIZE) as f32 - (self.size.y / 2) as f32,
+                            ((key.2 as usize) * Chunk::CHUNK_SIZE) as f32 - (self.size.z / 2) as f32,
                         ),
                         ..Default::default()
                     }

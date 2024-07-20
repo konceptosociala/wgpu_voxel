@@ -1,5 +1,10 @@
 use std::sync::Arc;
-use hal::{buffer::{Buffer, BufferId, InvalidBufferId}, depth_texture::DepthTexture};
+use error::RenderError;
+use hal::{
+    buffer::{Buffer, BufferId, InvalidBufferId}, 
+    depth_texture::DepthTexture, 
+    pipeline::PipelineKey,
+};
 use game_loop::winit::{
     dpi::PhysicalSize, 
     window::Window,
@@ -14,16 +19,16 @@ pub mod hal;
 
 #[allow(dead_code)]
 pub struct Renderer {
-    pub window: Arc<Window>,
-    pub surface: wgpu::Surface<'static>,
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
-    pub config: wgpu::SurfaceConfiguration,
-    pub size: PhysicalSize<u32>,
-    pub vertex_buffers: Vec<Buffer<Vertex>>,
-    pub camera_buffer: CameraBuffer,
-    pub render_pipelines: RenderPipelines,
-    pub depth_texture: DepthTexture,
+    window: Arc<Window>,
+    surface: wgpu::Surface<'static>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
+    size: PhysicalSize<u32>,
+    vertex_buffers: Vec<Buffer<Vertex>>,
+    camera_buffer: CameraBuffer,
+    render_pipelines: RenderPipelines,
+    depth_texture: DepthTexture,
 }
 
 impl Renderer {
@@ -62,6 +67,19 @@ impl Renderer {
             render_pipelines,
             depth_texture,
         })
+    }
+
+    pub fn canvas(&self) -> Result<Canvas, RenderError> {
+        let texture = self.surface.get_current_texture()?;
+        let view = texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        Ok(Canvas { texture, view })
+    }
+
+    pub fn draw_ctx(&self) -> DrawContext {
+        DrawContext {
+            encoder: self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default()),
+        }
     }
 
     pub fn window(&self) -> Arc<Window> {
@@ -103,8 +121,17 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn update_camera(&self, camera: &Camera, transform: &Transform) {
+    pub fn update_camera(&self, camera: &mut Camera, transform: &Transform) {
+        camera.set_aspect(self.size.width as f32 / self.size.height as f32);
         self.camera_buffer.update(camera, transform, &self.queue);
+    }
+
+    pub fn size(&self) -> PhysicalSize<u32> {
+        self.size
+    }
+    
+    pub fn depth_texture(&self) -> &DepthTexture {
+        &self.depth_texture
     }
 
     async fn init_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
@@ -152,7 +179,79 @@ impl Renderer {
     }
 }
 
-pub trait Renderable {
+pub struct DrawContext {
+    encoder: wgpu::CommandEncoder,
+}
+
+impl DrawContext {
+    pub fn pass<'a>(
+        &'a mut self, 
+        canvas: &'a Canvas, 
+        depth_texture: &'a DepthTexture,
+    ) -> RenderPass<'a> {
+        let pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Render pass"),
+            color_attachments: &[
+                Some(wgpu::RenderPassColorAttachment {
+                    view: &canvas.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                }),
+            ],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth_texture.view(),
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        });
+
+        RenderPass { pass }
+    }
+
+    pub fn submit(self, canvas: Canvas, renderer: &Renderer) {
+        renderer.queue.submit(std::iter::once(self.encoder.finish()));
+        canvas.texture.present();
+    }
+}
+
+pub struct RenderPass<'a> {
+    pub pass: wgpu::RenderPass<'a>
+}
+
+impl<'a> RenderPass<'a> {
+    pub fn draw(
+        &mut self,
+        drawable: &impl Drawable,
+        transform: &Transform,
+        pipeline: &'a PipelineKey,
+        renderer: &'a Renderer
+    ) {
+        self.pass.set_pipeline(renderer.render_pipelines.get(pipeline));
+        self.pass.set_bind_group(0, renderer.camera_buffer.bind_group(), &[]);
+        self.pass.set_push_constants(
+            wgpu::ShaderStages::VERTEX,
+            0,
+            bytemuck::cast_slice(&[transform.uniform()]),
+        );
+        self.pass.set_vertex_buffer(0, renderer.vertex_buffers[drawable.vertex_buffer()].inner.slice(..)); 
+        self.pass.draw(0..renderer.vertex_buffers[drawable.vertex_buffer()].capacity() as u32, 0..1);
+    }
+}
+
+pub struct Canvas {
+    texture: wgpu::SurfaceTexture,
+    view: wgpu::TextureView,
+}
+
+pub trait Drawable {
     fn update(&mut self, renderer: &mut Renderer);
 
     fn vertex_buffer(&self) -> BufferId;

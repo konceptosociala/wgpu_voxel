@@ -1,3 +1,18 @@
+// Vertex data
+struct VertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) color: vec3<f32>,
+}
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) color: vec3<f32>,
+    @location(1) frag_pos: vec3<f32>,
+    @location(2) normal: vec3<f32>,
+    @location(3) camera_pos: vec3<f32>,
+};
+
 // Camera
 struct CameraUniform {
     position: vec3<f32>,
@@ -15,21 +30,7 @@ struct TransformUniform {
 
 var<push_constant> transform: TransformUniform;
 
-// Vertex data
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @location(1) normal: vec3<f32>,
-    @location(2) color: vec3<f32>,
-}
-
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) color: vec3<f32>,
-    @location(1) frag_pos: vec3<f32>,
-    @location(2) normal: vec3<f32>,
-    @location(3) camera_pos: vec3<f32>,
-};
-
+// Entries
 @vertex
 fn vs_main(
     input: VertexInput,

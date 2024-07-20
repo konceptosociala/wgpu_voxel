@@ -1,14 +1,11 @@
 use std::path::PathBuf;
-
 use clap::Parser;
-use game_loop::winit::event::MouseScrollDelta;
-use nalgebra_glm as glm;
-use hecs::World;
 use wgpu_voxel::{
     engine::Engine, 
+    event::{MouseScrollDelta, WindowEvent}, 
+    glm, 
     renderer::{
-        error::RenderError, 
-        pbr::{
+        error::RenderError, hal::pipeline::PipelineKey, pbr::{
             camera::{Camera, CameraType}, 
             transform::Transform
         }, 
@@ -16,9 +13,9 @@ use wgpu_voxel::{
             chunk::Chunk, 
             model::VoxelModel
         }, 
-        Renderable, Renderer
+        Drawable, Renderer
     }, 
-    Game, PhysicalSize, WindowBuilder, WindowEvent,
+    Game, PhysicalSize, WindowBuilder, World 
 };
 
 #[derive(Clone, Default, Debug)]
@@ -36,7 +33,10 @@ struct VoxelViewer {
 
 impl Engine for VoxelViewer {
     fn init(&mut self, world: &mut World, renderer: &mut Renderer) {
-        let models = VoxelModel::load_vox(&self.model_path).unwrap();
+        let models = VoxelModel::load_vox(&self.model_path).unwrap_or_else(|e| {
+            panic!("Cannot load model `{}: {}", &self.model_path.to_str().unwrap(), e);
+        });
+
         for model in models {
             for mut chunk_bundle in model.into_chunks().into_iter() {
                 chunk_bundle.chunk.update(renderer);
@@ -47,7 +47,7 @@ impl Engine for VoxelViewer {
         world.spawn((
             Camera::new(
                 CameraType::LookAt, 
-                renderer.size.width as f32 / renderer.size.height as f32,
+                renderer.size().width as f32 / renderer.size().height as f32,
             ),
             Transform::new_from_translation(glm::vec3(0.0, 0.0, -75.0)),
         ));
@@ -89,7 +89,7 @@ impl Engine for VoxelViewer {
                         glm::quat_angle_axis(self.camera_config.target_y - ty, &glm::Vec3::y());
                 },
                 WindowEvent::MouseWheel { delta: MouseScrollDelta::LineDelta(_, delta), .. } => {
-                    camera_transform.translation.z = (camera_transform.translation.z + delta).min(-0.5);
+                    camera_transform.translation.z = (camera_transform.translation.z + delta).min(-16.0);
                 },
                 _ => return false,
             }
@@ -103,56 +103,22 @@ impl Engine for VoxelViewer {
         world: &mut World,
         renderer: &mut Renderer,
     ) -> Result<(), RenderError> {
-        let output = renderer.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        let mut encoder = renderer.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let canvas = renderer.canvas()?;
+        let mut ctx = renderer.draw_ctx();
 
         {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    }),
-                ],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: renderer.depth_texture.view(),
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            }); 
+            let mut render_pass = ctx.pass(&canvas, renderer.depth_texture()); 
 
             for (_, (camera, transform)) in &mut world.query::<(&mut Camera, &Transform)>() {
-                camera.set_aspect(renderer.size.width as f32 / renderer.size.height as f32);
                 renderer.update_camera(camera, transform);
             }
     
             for (_, (chunk, transform)) in &mut world.query::<(&Chunk, &Transform)>() {
-                render_pass.set_pipeline(&renderer.render_pipelines.main_pipeline);
-                render_pass.set_bind_group(0, renderer.camera_buffer.bind_group(), &[]);
-                render_pass.set_push_constants(
-                    wgpu::ShaderStages::VERTEX,
-                    0,
-                    bytemuck::cast_slice(&[transform.uniform()]),
-                );
-                render_pass.set_vertex_buffer(0, renderer.vertex_buffers[chunk.vertex_buffer()].inner.slice(..)); 
-                render_pass.draw(0..renderer.vertex_buffers[chunk.vertex_buffer()].capacity() as u32, 0..1);
+                render_pass.draw(chunk, transform, &PipelineKey::MainPipeline, renderer);
             }
         }
 
-        renderer.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
+        ctx.submit(canvas, renderer);
 
         Ok(())
     }

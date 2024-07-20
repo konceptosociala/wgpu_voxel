@@ -1,17 +1,16 @@
 use std::sync::Arc;
-
 use hecs::Bundle;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-
 use crate::renderer::{
-    hal::buffer::BufferId, 
+    hal::buffer::BufferId,
     pbr::{
-        mesh::{Color, Mesh}, 
+        mesh::Mesh,
         transform::Transform,
-    }, 
-    voxel::block::Block, 
-    Renderable, Renderer
+        Color,
+    },
+    voxel::block::Block,
+    Drawable, Renderer
 };
 
 #[derive(Debug, Error)]
@@ -61,7 +60,6 @@ impl Chunk {
         Ok(())
     }
 
-    // TODO: generate mesh
     pub fn generate_mesh(&self) -> Mesh {
         let mut mesh = Mesh::default();
 
@@ -121,7 +119,7 @@ impl Chunk {
     }
 }
 
-impl Renderable for Chunk {
+impl Drawable for Chunk {
     fn update(&mut self, renderer: &mut Renderer) {
         let mesh = self.generate_mesh();
 

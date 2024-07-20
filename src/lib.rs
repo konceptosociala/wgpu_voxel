@@ -1,21 +1,22 @@
+#![deny(elided_lifetimes_in_paths)] 
+
 pub mod engine;
 pub mod game;
 pub mod renderer;
 
 use std::sync::Arc;
 
-use game_loop::{game_loop, winit::{
-    event::Event, 
-    event_loop::EventLoop, 
-}};
-use hecs::World;
+use game_loop::winit::event::{Event, WindowEvent};
+use game_loop::{game_loop, winit::event_loop::EventLoop};
 
 use engine::Engine;
 use renderer::{error::RenderError, Renderer};
 
 pub use game_loop::winit::window::WindowBuilder;
 pub use game_loop::winit::dpi::PhysicalSize;
-pub use game_loop::winit::event::WindowEvent;
+pub use game_loop::winit::event;
+pub use hecs::World;
+pub use nalgebra_glm as glm;
 
 pub struct Game {
     event_loop: Option<EventLoop<()>>,
