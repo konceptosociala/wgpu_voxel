@@ -1,15 +1,19 @@
 use std::sync::Arc;
 use error::RenderError;
 use hal::{
-    buffer::{Buffer, BufferId, InvalidBufferId}, 
-    depth_texture::DepthTexture, 
+    buffer::{Buffer, BufferId, InvalidBufferId},
+    depth_texture::DepthTexture,
     pipeline::PipelineKey,
 };
 use game_loop::winit::{
-    dpi::PhysicalSize, 
+    dpi::PhysicalSize,
     window::Window,
 };
-use pbr::{camera::{Camera, CameraBuffer}, mesh::Vertex, transform::Transform};
+use pbr::{
+    camera::{Camera, CameraBuffer},
+    mesh::Vertex,
+    transform::Transform,
+};
 use hal::pipeline::RenderPipelines;
 
 pub mod error;
@@ -17,6 +21,7 @@ pub mod voxel;
 pub mod pbr;
 pub mod hal;
 
+/// Represents a renderer that handles drawing to a window using wgpu.
 #[allow(dead_code)]
 pub struct Renderer {
     window: Arc<Window>,
@@ -32,6 +37,13 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    /// Creates a new `Renderer` instance.
+    ///
+    /// # Parameters
+    /// - `window`: A shared Window instance that represents the window to render into.
+    ///
+    /// # Returns
+    /// A `Result` containing the `Renderer` instance or an error if creation fails.
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Renderer> {
         let size = window.inner_size();
 
@@ -69,6 +81,10 @@ impl Renderer {
         })
     }
 
+    /// Retrieves the current canvas for drawing.
+    ///
+    /// # Returns
+    /// A `Result` containing the `Canvas` or an error if retrieval fails.
     pub fn canvas(&self) -> Result<Canvas, RenderError> {
         let texture = self.surface.get_current_texture()?;
         let view = texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -76,20 +92,33 @@ impl Renderer {
         Ok(Canvas { texture, view })
     }
 
+    /// Creates a new drawing context for issuing draw commands.
+    ///
+    /// # Returns
+    /// A `DrawContext` that can be used for issuing draw commands.
     pub fn draw_ctx(&self) -> DrawContext {
         DrawContext {
             encoder: self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default()),
         }
     }
 
+    /// Retrieves the window associated with the renderer.
+    ///
+    /// # Returns
+    /// An `Arc<Window>` representing the window.
     pub fn window(&self) -> Arc<Window> {
         self.window.clone()
     }
 
+    /// Resizes the renderer to the current window size.
     pub fn resize(&mut self) {
         self.resize_with(self.size);
     }
 
+    /// Resizes the renderer to a specified size.
+    ///
+    /// # Parameters
+    /// - `new_size`: The new size for the renderer.
     pub fn resize_with(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width == 0 || new_size.height == 0 { return }
 
@@ -100,18 +129,33 @@ impl Renderer {
         self.depth_texture = DepthTexture::new(&self.device, &self.config);
     }
 
+    /// Creates a new vertex buffer with a specified capacity.
+    ///
+    /// # Parameters
+    /// - `capacity`: The capacity of the vertex buffer.
+    ///
+    /// # Returns
+    /// The ID of the newly created vertex buffer.
     pub fn create_vertex_buffer(&mut self, capacity: usize) -> BufferId {
         let id = self.vertex_buffers.len();
 
         self.vertex_buffers.push(Buffer::new(
-            &self.device, 
-            capacity, 
+            &self.device,
+            capacity,
             wgpu::BufferUsages::VERTEX,
         ));
 
         id
     }
 
+    /// Updates the data in an existing vertex buffer.
+    ///
+    /// # Parameters
+    /// - `id`: The ID of the vertex buffer to update.
+    /// - `data`: The new vertex data.
+    ///
+    /// # Returns
+    /// A `Result` indicating success or failure. 
     pub fn update_vertex_buffer(&mut self, id: BufferId, data: &[Vertex]) -> Result<(), InvalidBufferId> {
         self.vertex_buffers
             .get_mut(id)
@@ -121,15 +165,28 @@ impl Renderer {
         Ok(())
     }
 
+    /// Updates the camera buffer with the current camera and transform.
+    ///
+    /// # Parameters
+    /// - `camera`: The camera to update.
+    /// - `transform`: The transform of the camera.
     pub fn update_camera(&self, camera: &mut Camera, transform: &Transform) {
         camera.set_aspect(self.size.width as f32 / self.size.height as f32);
         self.camera_buffer.update(camera, transform, &self.queue);
     }
 
+    /// Retrieves the current size of the renderer.
+    ///
+    /// # Returns
+    /// The current size as a `PhysicalSize<u32>`.
     pub fn size(&self) -> PhysicalSize<u32> {
         self.size
     }
-    
+
+    /// Retrieves the depth texture used for depth testing.
+    ///
+    /// # Returns
+    /// A reference to the `DepthTexture`.
     pub fn depth_texture(&self) -> &DepthTexture {
         &self.depth_texture
     }
@@ -147,7 +204,7 @@ impl Renderer {
             None,
         ).await
     }
-    
+
     async fn init_adapter(instance: wgpu::Instance, surface: &wgpu::Surface<'static>) -> wgpu::Adapter {
         instance.request_adapter(
             &wgpu::RequestAdapterOptions {
@@ -157,14 +214,14 @@ impl Renderer {
             }
         ).await.unwrap()
     }
-    
+
     fn init_instance() -> wgpu::Instance {
         wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
         })
     }
-    
+
     fn init_config(surface_format: wgpu::TextureFormat, size: PhysicalSize<u32>, surface_caps: wgpu::SurfaceCapabilities) -> wgpu::SurfaceConfiguration {
         wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -179,14 +236,23 @@ impl Renderer {
     }
 }
 
+/// Represents a drawing context used for issuing draw commands.
 pub struct DrawContext {
     encoder: wgpu::CommandEncoder,
 }
 
 impl DrawContext {
+    /// Begins a new render pass with the specified canvas and depth texture.
+    ///
+    /// # Parameters
+    /// - `canvas`: The canvas to render to.
+    /// - `depth_texture`: The depth texture to use for depth testing.
+    ///
+    /// # Returns
+    /// A `RenderPass` instance for issuing draw commands.
     pub fn pass<'a>(
-        &'a mut self, 
-        canvas: &'a Canvas, 
+        &'a mut self,
+        canvas: &'a Canvas,
         depth_texture: &'a DepthTexture,
     ) -> RenderPass<'a> {
         let pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -216,17 +282,30 @@ impl DrawContext {
         RenderPass { pass }
     }
 
+    /// Submits the drawing commands and presents the canvas.
+    ///
+    /// # Parameters
+    /// - `canvas`: The canvas to present.
+    /// - `renderer`: The renderer instance used to submit commands.
     pub fn submit(self, canvas: Canvas, renderer: &Renderer) {
         renderer.queue.submit(std::iter::once(self.encoder.finish()));
         canvas.texture.present();
     }
 }
 
+/// Represents a render pass used for drawing.
 pub struct RenderPass<'a> {
-    pub pass: wgpu::RenderPass<'a>
+    pass: wgpu::RenderPass<'a>
 }
 
 impl<'a> RenderPass<'a> {
+    /// Draws a drawable object using the specified transform and pipeline.
+    ///
+    /// # Parameters
+    /// - `drawable`: The object to draw.
+    /// - `transform`: The transform of the drawable object.
+    /// - `pipeline`: The pipeline to use for rendering.
+    /// - `renderer`: The renderer instance used for drawing.
     pub fn draw(
         &mut self,
         drawable: &impl Drawable,
@@ -246,13 +325,23 @@ impl<'a> RenderPass<'a> {
     }
 }
 
+/// Represents the canvas used for rendering.
 pub struct Canvas {
     texture: wgpu::SurfaceTexture,
     view: wgpu::TextureView,
 }
 
+/// Trait for drawable objects.
 pub trait Drawable {
+    /// Updates the drawable object's renderer data
+    ///
+    /// # Parameters
+    /// - `renderer`: The renderer instance used to update the drawable.
     fn update(&mut self, renderer: &mut Renderer);
 
+    /// Retrieves the ID of the vertex buffer used by the drawable.
+    ///
+    /// # Returns
+    /// The ID of the vertex buffer.
     fn vertex_buffer(&self) -> BufferId;
 }

@@ -1,3 +1,4 @@
+/// A structure representing a depth texture, including its view and sampler.
 pub struct DepthTexture {
     texture: wgpu::Texture,
     view: wgpu::TextureView,
@@ -5,6 +6,16 @@ pub struct DepthTexture {
 }
 
 impl DepthTexture {
+    /// Creates a new depth texture with the specified device and surface configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `device` - A reference to the wgpu device.
+    /// * `config` - A reference to the surface configuration.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of `DepthTexture`.
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> DepthTexture {
         let size = wgpu::Extent3d {
             width: config.width,
@@ -44,15 +55,30 @@ impl DepthTexture {
             sampler,
         }
     }
-    
+
+    /// Returns a reference to the inner wgpu texture.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `wgpu::Texture`.
     pub fn texture(&self) -> &wgpu::Texture {
         &self.texture
     }
-    
+
+    /// Returns a reference to the texture view.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `wgpu::TextureView`.
     pub fn view(&self) -> &wgpu::TextureView {
         &self.view
     }
-    
+
+    /// Returns a reference to the sampler.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `wgpu::Sampler`.
     pub fn sampler(&self) -> &wgpu::Sampler {
         &self.sampler
     }

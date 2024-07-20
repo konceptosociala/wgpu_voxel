@@ -18,6 +18,7 @@ pub use game_loop::winit::event;
 pub use hecs::World;
 pub use nalgebra_glm as glm;
 
+/// The main game struct that manages the game loop, rendering, and input.
 pub struct Game {
     event_loop: Option<EventLoop<()>>,
     renderer: Renderer,
@@ -26,6 +27,13 @@ pub struct Game {
 }
 
 impl Game {
+    /// Creates a new `Game` instance.
+    ///
+    /// # Parameters
+    /// - `window`: The `WindowBuilder` used to create the game window.
+    ///
+    /// # Returns
+    /// A `Result` containing the `Game` instance or an error.
     pub fn new(window: WindowBuilder) -> anyhow::Result<Game> {
         let event_loop = EventLoop::new().unwrap();
         let window = Arc::new(window.build(&event_loop).unwrap());
@@ -39,10 +47,21 @@ impl Game {
         })
     }
 
+    /// Sets the game engine.
+    ///
+    /// # Parameters
+    /// - `engine`: A boxed `Engine` trait object that contains the game's logic.
     pub fn set_engine(&mut self, engine: Box<dyn Engine>) {
         self.engine = Some(engine);
     }
 
+    /// Runs the main game loop.
+    ///
+    /// # Returns
+    /// A `Result` indicating success or failure.
+    ///
+    /// # Panics
+    /// Panics if the engine is not set.
     pub fn run(mut self) -> anyhow::Result<()> {
         if self.engine.is_none() {
             panic!("Engine not set!");
@@ -93,7 +112,7 @@ impl Game {
     fn render(&mut self) -> Result<(), RenderError> {
         self.engine.as_mut().unwrap().render(&mut self.world, &mut self.renderer)
     }
-
+    
     fn input(&mut self, event: &WindowEvent) -> bool {
         self.engine.as_mut().unwrap().input(event, &mut self.world)
     }

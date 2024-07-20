@@ -1,7 +1,8 @@
 use std::{collections::HashMap, ops::Deref};
-
 use crate::renderer::pbr::mesh::Vertex;
 
+/// Represents a GPU rendering pipeline, including the shader module,
+/// pipeline layout, and render pipeline.
 pub struct Pipeline {
     shader: wgpu::ShaderModule,
     layout: wgpu::PipelineLayout,
@@ -9,6 +10,20 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
+    /// Creates a new rendering pipeline with the specified shader, label, device,
+    /// surface configuration, and bind group layouts.
+    ///
+    /// # Arguments
+    ///
+    /// * `shader` - The descriptor for the shader module.
+    /// * `label` - A label for the pipeline.
+    /// * `device` - A reference to the wgpu device.
+    /// * `config` - A reference to the surface configuration.
+    /// * `bind_group_layouts` - A slice of references to bind group layouts.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of `Pipeline`.
     pub fn new(
         shader: wgpu::ShaderModuleDescriptor<'_>, 
         label: &str, 
@@ -75,10 +90,20 @@ impl Pipeline {
         }
     }
     
+    /// Returns a reference to the shader module used by this pipeline.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `wgpu::ShaderModule`.
     pub fn shader(&self) -> &wgpu::ShaderModule {
         &self.shader
     }
     
+    /// Returns a reference to the pipeline layout.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `wgpu::PipelineLayout`.
     pub fn layout(&self) -> &wgpu::PipelineLayout {
         &self.layout
     }
@@ -92,16 +117,30 @@ impl Deref for Pipeline {
     }
 }
 
+/// Enum representing the keys for different rendering pipelines.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PipelineKey {
     MainPipeline,
 }
 
+/// A collection of rendering pipelines identified by `PipelineKey`.
 pub struct RenderPipelines {
     pipelines: HashMap<PipelineKey, Pipeline>,
 }
 
 impl RenderPipelines {
+    /// Creates a new set of rendering pipelines with the specified device, surface configuration,
+    /// and bind group layouts.
+    ///
+    /// # Arguments
+    ///
+    /// * `device` - A reference to the wgpu device.
+    /// * `config` - A reference to the surface configuration.
+    /// * `bind_group_layouts` - A slice of references to bind group layouts.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of `RenderPipelines`.
     pub fn new(
         device: &wgpu::Device, 
         config: &wgpu::SurfaceConfiguration,
@@ -123,6 +162,15 @@ impl RenderPipelines {
         }
     }
 
+    /// Retrieves a reference to the pipeline associated with the given key.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A reference to the `PipelineKey` identifying the desired pipeline.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the corresponding `Pipeline`.
     pub fn get(&self, key: &PipelineKey) -> &Pipeline {
         self.pipelines.get(key).unwrap()
     }
