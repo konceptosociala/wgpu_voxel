@@ -35,8 +35,8 @@ impl Game {
     /// # Returns
     /// A `Result` containing the `Game` instance or an error.
     pub fn new(window: WindowBuilder) -> anyhow::Result<Game> {
-        let event_loop = EventLoop::new().unwrap();
-        let window = Arc::new(window.build(&event_loop).unwrap());
+        let event_loop = EventLoop::new()?;
+        let window = Arc::new(window.build(&event_loop)?);
         let world = World::new();
 
         Ok(Game {
