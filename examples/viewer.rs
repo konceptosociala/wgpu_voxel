@@ -142,13 +142,13 @@ fn main() -> anyhow::Result<()> {
             .with_title("Wgpu Voxel")
             .with_inner_size(PhysicalSize::new(800, 600)),
     )?;
-    game.set_engine(Box::new(VoxelViewer {
+    game.set_engine(VoxelViewer {
         camera_config: CameraConfiguration {
             limit: (-85.0, 85.0),
             ..Default::default()
         },
         model_path: args.path,
-    }));
+    });
     game.run()?;
 
     Ok(())

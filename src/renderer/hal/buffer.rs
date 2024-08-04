@@ -3,15 +3,17 @@ use std::sync::Arc;
 use std::mem::{size_of, size_of_val};
 
 use bytemuck::Pod;
+use derive_getters::Getters;
 use pretty_type_name::pretty_type_name;
 use thiserror::Error;
 
 use crate::renderer::error::RenderError;
 
-pub type BufferId = usize;
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub struct BufferId(pub(crate) usize);
 
 #[derive(Debug, Error)]
-#[error("Invalid buffer id {0}")]
+#[error("Invalid buffer id {}", self.0.0)]
 pub struct InvalidBufferId(pub BufferId);
 
 /// A generic buffer used for storing data on the GPU.
@@ -19,10 +21,11 @@ pub struct InvalidBufferId(pub BufferId);
 /// # Type Parameters
 /// 
 /// * `T` - The type of data stored in the buffer. Must implement the `Pod` trait.
-#[derive(Debug)]
+#[derive(Debug, Getters)]
 pub struct Buffer<T> {
-    pub inner: Arc<wgpu::Buffer>,
+    inner: Arc<wgpu::Buffer>,
     capacity: usize,
+    #[getter(skip)]
     _phantom_data: PhantomData<T>,
 }
 
@@ -83,24 +86,6 @@ impl<T: Pod> Buffer<T> {
         }
 
         self.fill_exact(queue, data).unwrap();
-    }
-    
-    /// Returns the capacity of the buffer.
-    ///
-    /// # Returns
-    ///
-    /// The capacity of the buffer in number of elements of type `T`.
-    pub fn capacity(&self) -> usize {
-        self.capacity
-    }
-    
-    /// Returns a clone of the inner wgpu buffer.
-    ///
-    /// # Returns
-    ///
-    /// An `Arc` pointing to the inner wgpu buffer.
-    pub fn inner(&self) -> Arc<wgpu::Buffer> {
-        self.inner.clone()
     }
 
     fn new_inner(device: &wgpu::Device, capacity: usize, usage: wgpu::BufferUsages) -> wgpu::Buffer {

@@ -1,3 +1,4 @@
+use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
 pub mod mesh;
@@ -8,7 +9,7 @@ pub mod camera;
 ///
 /// The color components are floating-point values ranging from 0.0 to 1.0.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, Debug, Serialize, Deserialize, Zeroable, Pod)]
 pub struct Color {
     r: f32,
     g: f32,

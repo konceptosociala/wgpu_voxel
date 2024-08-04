@@ -1,4 +1,5 @@
 use bytemuck::{Pod, Zeroable};
+use derive_getters::Getters;
 use nalgebra_glm as glm;
 use serde::{Deserialize, Serialize};
 use crate::renderer::hal::{buffer::Buffer, Padding};
@@ -126,6 +127,7 @@ impl CameraUniform {
 }
 
 /// A buffer that holds camera uniforms and provides bind group layouts and bind groups for rendering.
+#[derive(Getters)]
 pub struct CameraBuffer {
     buffer: Buffer<CameraUniform>,
     bind_group_layout: wgpu::BindGroupLayout,
@@ -198,32 +200,5 @@ impl CameraBuffer {
     ) {
         self.buffer.fill_exact(queue, &[CameraUniform::new(camera, transform)])
             .expect("Can't fill camera buffer");
-    }
-    
-    /// Returns a reference to the buffer.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the `Buffer<CameraUniform>`.
-    pub fn buffer(&self) -> &Buffer<CameraUniform> {
-        &self.buffer
-    }
-    
-    /// Returns a reference to the bind group layout.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the `wgpu::BindGroupLayout`.
-    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.bind_group_layout
-    }
-    
-    /// Returns a reference to the bind group.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the `wgpu::BindGroup`.
-    pub fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
     }
 }

@@ -1,9 +1,7 @@
 use std::sync::Arc;
 use error::RenderError;
 use hal::{
-    buffer::{Buffer, BufferId, InvalidBufferId},
-    depth_texture::DepthTexture,
-    pipeline::PipelineKey,
+    buffer::{Buffer, BufferId, InvalidBufferId}, pipeline::PipelineKey, taa::{Taa, TaaConfig}, texture::Texture
 };
 use game_loop::winit::{
     dpi::PhysicalSize,
@@ -20,6 +18,7 @@ pub mod error;
 pub mod voxel;
 pub mod pbr;
 pub mod hal;
+pub mod rt;
 
 /// Represents a renderer that handles drawing to a window using wgpu.
 #[allow(dead_code)]
@@ -33,7 +32,8 @@ pub struct Renderer {
     vertex_buffers: Vec<Buffer<Vertex>>,
     camera_buffer: CameraBuffer,
     render_pipelines: RenderPipelines,
-    depth_texture: DepthTexture,
+    depth_texture: Texture,
+    taa: Taa,
 }
 
 impl Renderer {
@@ -61,11 +61,23 @@ impl Renderer {
         let config = Self::init_config(surface_format, size, surface_caps);
 
         let camera_buffer = CameraBuffer::new(&device, &queue);
+        let taa = Taa::new(&device, &queue, &config);
+
         let render_pipelines = RenderPipelines::new(&device, &config, &[
             camera_buffer.bind_group_layout(),
+            taa.config_buffer().bind_group_layout(),
         ]);
 
-        let depth_texture = DepthTexture::new(&device, &config);
+        let depth_texture = Texture::new(
+            &device, 
+            &config,
+            wgpu::FilterMode::Linear,
+            wgpu::TextureDimension::D2,
+            wgpu::TextureFormat::Depth32Float,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            None,
+            "Depth"
+        );
 
         Ok(Renderer {
             surface,
@@ -78,6 +90,7 @@ impl Renderer {
             camera_buffer,
             render_pipelines,
             depth_texture,
+            taa,
         })
     }
 
@@ -126,7 +139,15 @@ impl Renderer {
         self.config.width = new_size.width;
         self.config.height = new_size.height;
         self.surface.configure(&self.device, &self.config);
-        self.depth_texture = DepthTexture::new(&self.device, &self.config);
+        self.depth_texture.recreate(&self.device, &self.config);
+    }
+
+    pub fn update_taa_config(&mut self, config: TaaConfig) {
+        self.taa
+            .config_buffer()
+            .inner()
+            .fill_exact(&self.queue, &[config])
+            .unwrap();
     }
 
     /// Creates a new vertex buffer with a specified capacity.
@@ -145,7 +166,7 @@ impl Renderer {
             wgpu::BufferUsages::VERTEX,
         ));
 
-        id
+        BufferId(id)
     }
 
     /// Updates the data in an existing vertex buffer.
@@ -158,12 +179,14 @@ impl Renderer {
     /// A `Result` indicating success or failure. 
     pub fn update_vertex_buffer(&mut self, id: BufferId, data: &[Vertex]) -> Result<(), InvalidBufferId> {
         self.vertex_buffers
-            .get_mut(id)
+            .get_mut(id.0)
             .ok_or(InvalidBufferId(id))?
             .fill(&self.device, &self.queue, data);
 
         Ok(())
     }
+
+    // pub fn 
 
     /// Updates the camera buffer with the current camera and transform.
     ///
@@ -186,15 +209,15 @@ impl Renderer {
     /// Retrieves the depth texture used for depth testing.
     ///
     /// # Returns
-    /// A reference to the `DepthTexture`.
-    pub fn depth_texture(&self) -> &DepthTexture {
+    /// A reference to the `Texture`.
+    pub fn depth_texture(&self) -> &Texture {
         &self.depth_texture
     }
 
     async fn init_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
         adapter.request_device(
             &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::PUSH_CONSTANTS,
+                required_features: wgpu::Features::PUSH_CONSTANTS | wgpu::Features::BGRA8UNORM_STORAGE,
                 required_limits: wgpu::Limits {
                     max_push_constant_size: 128,
                     ..Default::default()
@@ -253,7 +276,7 @@ impl DrawContext {
     pub fn pass<'a>(
         &'a mut self,
         canvas: &'a Canvas,
-        depth_texture: &'a DepthTexture,
+        depth_texture: &'a Texture,
     ) -> RenderPass<'a> {
         let pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render pass"),
@@ -311,17 +334,22 @@ impl<'a> RenderPass<'a> {
         drawable: &impl Drawable,
         transform: &Transform,
         pipeline: &'a PipelineKey,
-        renderer: &'a Renderer
+        renderer: &'a Renderer,
     ) {
-        self.pass.set_pipeline(renderer.render_pipelines.get(pipeline));
+        self.pass.set_pipeline(renderer.render_pipelines.get(pipeline).inner());
         self.pass.set_bind_group(0, renderer.camera_buffer.bind_group(), &[]);
+        self.pass.set_bind_group(1, renderer.taa.config_buffer().bind_group(), &[]);
         self.pass.set_push_constants(
             wgpu::ShaderStages::VERTEX,
             0,
             bytemuck::cast_slice(&[transform.uniform()]),
         );
-        self.pass.set_vertex_buffer(0, renderer.vertex_buffers[drawable.vertex_buffer()].inner.slice(..)); 
-        self.pass.draw(0..renderer.vertex_buffers[drawable.vertex_buffer()].capacity() as u32, 0..1);
+        if let Some(id) = drawable.vertex_buffer() {
+            self.pass.set_vertex_buffer(0, renderer.vertex_buffers[id.0].inner().slice(..)); 
+            self.pass.draw(0..*renderer.vertex_buffers[id.0].capacity() as u32, 0..1);
+        } else {
+            self.pass.draw(0..6, 0..1);
+        }
     }
 }
 
@@ -343,5 +371,11 @@ pub trait Drawable {
     ///
     /// # Returns
     /// The ID of the vertex buffer.
-    fn vertex_buffer(&self) -> BufferId;
+    fn vertex_buffer(&self) -> Option<BufferId>;
+}
+
+impl Drawable for () {
+    fn update(&mut self, _: &mut Renderer) {}
+
+    fn vertex_buffer(&self) -> Option<BufferId> { None }
 }

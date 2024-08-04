@@ -1,12 +1,15 @@
-use std::{collections::HashMap, ops::Deref};
+use std::collections::HashMap;
+use derive_getters::Getters;
+
 use crate::renderer::pbr::mesh::Vertex;
 
 /// Represents a GPU rendering pipeline, including the shader module,
 /// pipeline layout, and render pipeline.
+#[derive(Getters)]
 pub struct Pipeline {
+    inner: wgpu::RenderPipeline,
     shader: wgpu::ShaderModule,
     layout: wgpu::PipelineLayout,
-    pipeline: wgpu::RenderPipeline,
 }
 
 impl Pipeline {
@@ -30,6 +33,7 @@ impl Pipeline {
         device: &wgpu::Device, 
         config: &wgpu::SurfaceConfiguration,
         bind_group_layouts: &[&wgpu::BindGroupLayout],
+        buffers: &[wgpu::VertexBufferLayout<'_>],
     ) -> Pipeline {
         let shader = device.create_shader_module(shader);
 
@@ -48,7 +52,7 @@ impl Pipeline {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main", 
-                buffers: &[Vertex::desc()], 
+                buffers, 
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -86,34 +90,8 @@ impl Pipeline {
         Pipeline {
             shader,
             layout,
-            pipeline,
+            inner: pipeline,
         }
-    }
-    
-    /// Returns a reference to the shader module used by this pipeline.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the `wgpu::ShaderModule`.
-    pub fn shader(&self) -> &wgpu::ShaderModule {
-        &self.shader
-    }
-    
-    /// Returns a reference to the pipeline layout.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the `wgpu::PipelineLayout`.
-    pub fn layout(&self) -> &wgpu::PipelineLayout {
-        &self.layout
-    }
-}
-
-impl Deref for Pipeline {
-    type Target = wgpu::RenderPipeline;
-
-    fn deref(&self) -> &Self::Target {
-        &self.pipeline
     }
 }
 
@@ -121,6 +99,7 @@ impl Deref for Pipeline {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PipelineKey {
     MainPipeline,
+    RtPipeline,
 }
 
 /// A collection of rendering pipelines identified by `PipelineKey`.
@@ -156,8 +135,20 @@ impl RenderPipelines {
                         device, 
                         config,
                         bind_group_layouts,
+                        &[Vertex::desc()],
                     ),
-                )
+                ),
+                (
+                    PipelineKey::RtPipeline,
+                    Pipeline::new(
+                        wgpu::include_wgsl!("../shaders/rt_shader.wgsl"), 
+                        "Rt", 
+                        device, 
+                        config,
+                        bind_group_layouts,
+                        &[],
+                    ),
+                ),
             ])
         }
     }

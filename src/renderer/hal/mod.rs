@@ -2,7 +2,8 @@ use bytemuck::{Pod, Zeroable};
 
 pub mod pipeline;
 pub mod buffer;
-pub mod depth_texture;
+pub mod texture;
+pub mod taa;
 
 /// A structure used for padding to align data to specific byte boundaries.
 /// 

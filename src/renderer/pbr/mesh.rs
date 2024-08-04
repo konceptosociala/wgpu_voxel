@@ -6,7 +6,7 @@ use super::Color;
 
 /// A vertex structure containing position, normal, and color attributes.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Zeroable, Pod)]
 pub struct Vertex {
     pub position: glm::Vec3,
     pub normal: glm::Vec3,
@@ -34,9 +34,6 @@ impl Vertex {
         }
     }
 }
-
-unsafe impl Zeroable for Vertex {}
-unsafe impl Pod for Vertex {}
 
 /// A mesh structure containing vertex data.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

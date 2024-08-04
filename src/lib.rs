@@ -1,4 +1,5 @@
 #![deny(elided_lifetimes_in_paths)] 
+// #![warn(missing_docs)]
 
 pub mod engine;
 pub mod game;
@@ -51,8 +52,8 @@ impl Game {
     ///
     /// # Parameters
     /// - `engine`: A boxed `Engine` trait object that contains the game's logic.
-    pub fn set_engine(&mut self, engine: Box<dyn Engine>) {
-        self.engine = Some(engine);
+    pub fn set_engine(&mut self, engine: impl Engine + 'static) {
+        self.engine = Some(Box::new(engine));
     }
 
     /// Runs the main game loop.
