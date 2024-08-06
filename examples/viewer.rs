@@ -5,7 +5,7 @@ use wgpu_voxel::{
     event::{MouseScrollDelta, WindowEvent},
     glm,
     renderer::{
-        error::RenderError, hal::pipeline::PipelineKey, pbr::{
+        error::RenderError, pbr::{
             camera::{Camera, CameraType},
             transform::Transform
         },
@@ -111,11 +111,11 @@ impl Engine for VoxelViewer {
             let mut render_pass = ctx.pass(&canvas, renderer.depth_texture());
 
             for (_, (camera, transform)) in &mut world.query::<(&mut Camera, &Transform)>() {
-                renderer.update_camera(camera, transform);
+                // renderer.update_camera(camera, transform);
             }
 
             for (_, (chunk, transform)) in &mut world.query::<(&Chunk, &Transform)>() {
-                render_pass.draw(chunk, transform, &PipelineKey::MainPipeline, renderer);
+                // render_pass.draw(chunk, transform, &PipelineKey::MainPipeline, renderer);
             }
         }
 

@@ -26,7 +26,7 @@ impl Vertex {
     /// # Returns
     ///
     /// A `wgpu::VertexBufferLayout` describing the layout of the vertex buffer.
-    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+    pub fn vertex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,

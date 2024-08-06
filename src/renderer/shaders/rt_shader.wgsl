@@ -2,11 +2,14 @@
 
 // ========= Uniforms =========
 
+// @group(0) @binding(0)
+// var output_texture: texture_storage_2d<rgba8unorm, write>;
+
 struct TaaConfig {
     jitter: f32,
 };
 
-@group(1) @binding(0)
+@group(0) @binding(0)
 var<uniform> taa_config: TaaConfig;
 
 // ========= Utils =========
@@ -37,7 +40,7 @@ fn vec_len_squared(vector: vec3<f32>) -> f32 {
 }
 
 fn rand(co: vec2<f32>) -> f32 {
-    return fract(sin(dot(co, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+    return fract(sin(dot(co * taa_config.jitter, vec2<f32>(12.9898, 78.233))) * 43758.5453);
 }
 
 fn rand_range(co: vec2<f32>, min: f32, max: f32) -> f32 {
@@ -70,11 +73,11 @@ fn cube_hit(
     let t_near = max(min(tx1, tx2), max(min(ty1, ty2), min(tz1, tz2)));
     let t_far = min(max(tx1, tx2), min(max(ty1, ty2), max(tz1, tz2)));
 
-    if (t_near > t_far || t_far < t_min) {
+    if t_near > t_far || t_far < t_min {
         return false;
     }
 
-    (*record).t = t_far;
+    (*record).t = t_near;
     (*record).p = ray_at(ray, (*record).t);
     
     let center = (end + start) * 0.5;
@@ -85,7 +88,7 @@ fn cube_hit(
 }
 
 fn cube_array_hit(
-    cubes: ptr<function, array<Cube, 2>>, 
+    cubes: ptr<function, array<Cube, 3>>, 
     ray: Ray, 
     t_min: f32, 
     t_max: f32,
@@ -95,7 +98,7 @@ fn cube_array_hit(
     var hit_anything = false;
     var closest_so_far = t_max;
 
-    for (var i = 0; i < 2; i++) {
+    for (var i = 0; i < 3; i++) {
         var cube = (*cubes)[i];
         if cube_hit(&cube, ray, t_min, closest_so_far, &temp) {
             hit_anything = true;
@@ -138,7 +141,7 @@ fn camera_new(
     let pixel_delta_v = viewport_v / f32(image_height);
 
     let viewport_upper_left = center - vec3<f32>(0.0, 0.0, focal_length) - viewport_u/2.0 - viewport_v/2.0;
-    let first_pixel = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+    let first_pixel = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v) + (taa_config.jitter / 720.0);
 
     var camera = Camera();
     camera.image_height = image_height;
@@ -152,7 +155,7 @@ fn camera_new(
     return camera;
 }
 
-fn camera_render(camera: Camera, cubes: ptr<function, array<Cube, 2>>, pos: vec2<f32>) -> Color {
+fn camera_render(camera: Camera, cubes: ptr<function, array<Cube, 3>>, pos: vec2<f32>) -> Color {
     let ray = ray_on_coords(pos, camera);
 
     return ray_color(ray, pos, camera.scan_depth, cubes);
@@ -179,34 +182,33 @@ fn ray_at(ray: Ray, t: f32) -> vec3<f32> {
     return ray.origin + t * ray.direction;
 }
 
-fn ray_color(ray: Ray, co: vec2<f32>, scan_depth: u32, cubes: ptr<function, array<Cube, 2>>) -> Color {
-    return Color(taa_config.jitter, 0.0, 0.0);
-    // var current_ray = ray;
-    // var current_depth = scan_depth;
-    // var color = Color(1.0, 1.0, 1.0);
-    // var attenuation = 1.0;
+fn ray_color(ray: Ray, co: vec2<f32>, scan_depth: u32, cubes: ptr<function, array<Cube, 3>>) -> Color {
+    var current_ray = ray;
+    var current_depth = scan_depth;
+    var color = Color(1.0, 1.0, 1.0);
+    var attenuation = 1.0;
 
-    // loop {
-    //     if current_depth == 0 {
-    //         return Color(0., 0., 0.);
-    //     }
+    loop {
+        if current_depth == 0 {
+            return Color(0., 0., 0.);
+        }
 
-    //     var hit_record = HitRecord();
+        var hit_record = HitRecord();
 
-    //     if cube_array_hit(cubes, current_ray, 0.001, 3.40282347e+38, &hit_record) {
-    //         let direction = hit_record.normal + normalize(random_vec_in_unit_sphere(co));
-    //         current_ray = Ray(hit_record.p, direction);
-    //         attenuation *= 0.5;
-    //         current_depth = current_depth - 1;
-    //     } else {
-    //         let unit_direction = normalize(current_ray.direction);
-    //         let a = 0.5 * (unit_direction.y + 1.0);
-    //         let background_color = (1.0 - a) * Color(1.0, 1.0, 1.0) + a * Color(0.5, 0.7, 1.0);
-    //         return attenuation * background_color;
-    //     }
-    // }
+        if cube_array_hit(cubes, current_ray, 0.001, 3.40282347e+38, &hit_record) {
+            let direction = hit_record.normal + normalize(random_vec_in_unit_sphere(co));
+            current_ray = Ray(hit_record.p, direction);
+            attenuation *= 0.5;
+            current_depth = current_depth - 1;
+        } else {
+            let unit_direction = normalize(current_ray.direction);
+            let a = 0.5 * (unit_direction.y + 1.0);
+            let background_color = (1.0 - a) * Color(1.0, 1.0, 1.0) + a * Color(0.5, 0.7, 1.0);
+            return attenuation * background_color;
+        }
+    }
 
-    // return Color(0.0, 0.0, 0.0);
+    return Color(0.0, 0.0, 0.0);
 }
 
 // ========= HitRecord =========
@@ -227,7 +229,30 @@ fn hit_record_set_face_normal(record: ptr<function, HitRecord>, ray: Ray, outwar
     }
 }
 
-// ========= Shaders =========
+// ========= Compute =========
+
+// @compute @workgroup_size(1)
+// fn compute_rt(
+//     @builtin(global_invocation_id) id: vec3<u32>
+// ) {
+//     let camera = camera_new(1280u, 720u, 10u);
+
+//     var cubes = array(
+//         Cube(vec3<f32>(-0.085, -0.125, -0.25)),
+//         Cube(vec3<f32>(0.085, -0.125, -0.25)),
+//     );
+
+//     let pos = (frag_pos.xy + vec2<f32>(1.0, 1.0)) * 0.5;
+
+//     let coord = vec2<u32>(
+//         u32(pos.x * 400.0),
+//         u32(pos.y * 100.0),
+//     );
+
+//     // return vec4<f32>(camera_render(camera, &cubes, frag_pos.xy), 1.0);
+
+//     textureStore(history_texture_in, id.xy, vec4<f32>(1.0, 0.0, 0.0, 1.0));
+// }
 
 @vertex
 fn vs_main(
@@ -264,7 +289,12 @@ fn vs_main(
         default: {}
     };
 
-    return vec4<f32>(x, y, 0.0, 1.0);
+    return vec4<f32>(
+        x + (taa_config.jitter / 1280.0), 
+        y + (taa_config.jitter / 720.0), 
+        0.0, 
+        1.0
+    );
 }
 
 @fragment
@@ -273,9 +303,17 @@ fn fs_main(
 ) -> @location(0) vec4<f32> {
     let camera = camera_new(1280u, 720u, 10u);
 
-    var cubes = array(
-        Cube(vec3<f32>(-0.085, -0.125, -0.25)),
-        Cube(vec3<f32>(0.085, -0.125, -0.25)),
+    var cubes = array(        
+        Cube(vec3<f32>(-0.2, -0.125, -0.25)),
+        Cube(vec3<f32>(-0.06, -0.125, -0.25)),
+        Cube(vec3<f32>(0.08, -0.125, -0.25)),
+    );
+
+    let pos = (frag_pos.xy + vec2<f32>(1.0, 1.0)) * 0.5;
+
+    let coord = vec2<u32>(
+        u32(pos.x * 400.0),
+        u32(pos.y * 100.0),
     );
 
     return vec4<f32>(camera_render(camera, &cubes, frag_pos.xy), 1.0);

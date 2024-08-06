@@ -205,11 +205,9 @@ impl Drawable for Chunk {
     /// # Panics
     ///
     /// Panics if `vertex_buffer` is `None`, indicating that `update()` has not been called.
-    fn vertex_buffer(&self) -> Option<BufferId> {
-        Some(
-            self.vertex_buffer
-                .expect("Chunk is not set up with update()")
-        )
+    fn vertex_buffer(&self) -> BufferId {
+        self.vertex_buffer
+            .expect("Chunk is not set up with update()")
     }
 }
 

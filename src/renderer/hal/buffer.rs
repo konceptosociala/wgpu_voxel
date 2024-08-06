@@ -8,6 +8,9 @@ use pretty_type_name::pretty_type_name;
 use thiserror::Error;
 
 use crate::renderer::error::RenderError;
+use crate::renderer::Renderer;
+
+use super::pipeline::{ShaderBinding, ShaderResource};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct BufferId(pub(crate) usize);
@@ -21,7 +24,7 @@ pub struct InvalidBufferId(pub BufferId);
 /// # Type Parameters
 /// 
 /// * `T` - The type of data stored in the buffer. Must implement the `Pod` trait.
-#[derive(Debug, Getters)]
+#[derive(Debug, Getters, Clone)]
 pub struct Buffer<T> {
     inner: Arc<wgpu::Buffer>,
     capacity: usize,
@@ -41,9 +44,9 @@ impl<T: Pod> Buffer<T> {
     /// # Returns
     ///
     /// A new instance of `Buffer<T>`.
-    pub fn new(device: &wgpu::Device, capacity: usize, usage: wgpu::BufferUsages) -> Buffer<T> {
+    pub fn new(renderer: &Renderer, capacity: usize, usage: wgpu::BufferUsages) -> Buffer<T> {
         Buffer {
-            inner: Arc::new(Buffer::<T>::new_inner(device, capacity * size_of::<T>(), usage)),
+            inner: Arc::new(Buffer::<T>::new_inner(&renderer.device, capacity * size_of::<T>(), usage)),
             capacity,
             _phantom_data: PhantomData,
         }
@@ -59,13 +62,13 @@ impl<T: Pod> Buffer<T> {
     /// # Errors
     ///
     /// Returns `RenderError::BufferOverflow` if the data length exceeds the buffer capacity.
-    pub fn fill_exact(&self, queue: &wgpu::Queue, data: &[T]) -> Result<(), RenderError> {
+    pub fn fill_exact(&self, renderer: &Renderer, data: &[T]) -> Result<(), RenderError> {
         if data.len() > self.capacity {
             return Err(RenderError::BufferOverflow(data.len()));
         }
 
         if !data.is_empty() {
-            queue.write_buffer(&self.inner, 0, bytemuck::cast_slice(data));
+            renderer.queue.write_buffer(&self.inner, 0, bytemuck::cast_slice(data));
         }
 
         Ok(())
@@ -78,14 +81,14 @@ impl<T: Pod> Buffer<T> {
     /// * `device` - A reference to the wgpu device.
     /// * `queue` - A reference to the wgpu queue.
     /// * `data` - A slice of data to be written to the buffer.
-    pub fn fill(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, data: &[T]) {
+    pub fn fill(&mut self, renderer: &Renderer, data: &[T]) {
         let bytes_to_write = size_of_val(data);
         if bytes_to_write > self.capacity * size_of::<T>() {
-            self.inner = Arc::new(Buffer::<T>::new_inner(device, bytes_to_write, self.inner.usage()));
+            self.inner = Arc::new(Buffer::<T>::new_inner(&renderer.device, bytes_to_write, self.inner.usage()));
             self.capacity = data.len();
         }
 
-        self.fill_exact(queue, data).unwrap();
+        self.fill_exact(renderer, data).unwrap();
     }
 
     fn new_inner(device: &wgpu::Device, capacity: usize, usage: wgpu::BufferUsages) -> wgpu::Buffer {
@@ -95,5 +98,61 @@ impl<T: Pod> Buffer<T> {
             usage: usage | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         })
+    }
+}
+
+
+pub struct BufferResource<T> {
+    pub buffer: Buffer<T>,
+    pub resource: ShaderResource,
+}
+
+impl<T: Pod> BufferResource<T> {
+    pub fn new(
+        renderer: &Renderer, 
+        buffer: Buffer<T>,
+        visibility: wgpu::ShaderStages,
+        buffer_type: wgpu::BufferBindingType,
+    ) -> BufferResource<T> {
+        let bind_group_layout = renderer.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some(format!("Buffer ({:?}, {}) bind group layout", buffer.inner.usage(), pretty_type_name::<T>()).as_str()),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: buffer_type,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+        });
+
+        let bind_group = renderer.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(format!("Buffer ({:?}, {}) bind group", buffer.inner.usage(), pretty_type_name::<T>()).as_str()),
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0, 
+                resource: buffer.inner().as_entire_binding(),
+            }]
+        });
+
+        let resource = ShaderResource {
+            bind_group,
+            bind_group_layout,
+        };
+
+        BufferResource {
+            buffer,
+            resource,
+        }
+    }
+}
+
+impl<T: Pod> ShaderBinding for BufferResource<T> {
+    fn get_resource(&self) -> &ShaderResource {
+        &self.resource
     }
 }

@@ -1,18 +1,18 @@
 use std::sync::Arc;
 use error::RenderError;
 use hal::{
-    buffer::{Buffer, BufferId, InvalidBufferId}, pipeline::PipelineKey, taa::{Taa, TaaConfig}, texture::Texture
+    buffer::{Buffer, BufferId, InvalidBufferId}, 
+    pipeline::{Pipeline, ShaderBinding}, 
+    texture::*
 };
 use game_loop::winit::{
     dpi::PhysicalSize,
     window::Window,
 };
 use pbr::{
-    camera::{Camera, CameraBuffer},
     mesh::Vertex,
     transform::Transform,
 };
-use hal::pipeline::RenderPipelines;
 
 pub mod error;
 pub mod voxel;
@@ -30,10 +30,7 @@ pub struct Renderer {
     config: wgpu::SurfaceConfiguration,
     size: PhysicalSize<u32>,
     vertex_buffers: Vec<Buffer<Vertex>>,
-    camera_buffer: CameraBuffer,
-    render_pipelines: RenderPipelines,
     depth_texture: Texture,
-    taa: Taa,
 }
 
 impl Renderer {
@@ -60,23 +57,18 @@ impl Renderer {
 
         let config = Self::init_config(surface_format, size, surface_caps);
 
-        let camera_buffer = CameraBuffer::new(&device, &queue);
-        let taa = Taa::new(&device, &queue, &config);
-
-        let render_pipelines = RenderPipelines::new(&device, &config, &[
-            camera_buffer.bind_group_layout(),
-            taa.config_buffer().bind_group_layout(),
-        ]);
-
         let depth_texture = Texture::new(
             &device, 
-            &config,
-            wgpu::FilterMode::Linear,
-            wgpu::TextureDimension::D2,
-            wgpu::TextureFormat::Depth32Float,
-            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            None,
-            "Depth"
+            TextureDescriptor {
+                width: config.width,
+                height: config.height,
+                filter: TextureFilter::Linear,
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Depth32Float,
+                usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::TEXTURE_BINDING,
+                depth: None,
+                label: "Depth data",
+            },
         );
 
         Ok(Renderer {
@@ -87,10 +79,7 @@ impl Renderer {
             size,
             window,
             vertex_buffers: vec![],
-            camera_buffer,
-            render_pipelines,
             depth_texture,
-            taa,
         })
     }
 
@@ -139,15 +128,11 @@ impl Renderer {
         self.config.width = new_size.width;
         self.config.height = new_size.height;
         self.surface.configure(&self.device, &self.config);
-        self.depth_texture.recreate(&self.device, &self.config);
-    }
 
-    pub fn update_taa_config(&mut self, config: TaaConfig) {
-        self.taa
-            .config_buffer()
-            .inner()
-            .fill_exact(&self.queue, &[config])
-            .unwrap();
+        let mut depth_descr = *self.depth_texture.description();
+        depth_descr.width = self.config.width;
+        depth_descr.height = self.config.height;
+        self.depth_texture = Texture::new(&self.device, depth_descr);
     }
 
     /// Creates a new vertex buffer with a specified capacity.
@@ -161,7 +146,7 @@ impl Renderer {
         let id = self.vertex_buffers.len();
 
         self.vertex_buffers.push(Buffer::new(
-            &self.device,
+            self,
             capacity,
             wgpu::BufferUsages::VERTEX,
         ));
@@ -178,24 +163,17 @@ impl Renderer {
     /// # Returns
     /// A `Result` indicating success or failure. 
     pub fn update_vertex_buffer(&mut self, id: BufferId, data: &[Vertex]) -> Result<(), InvalidBufferId> {
-        self.vertex_buffers
-            .get_mut(id.0)
+        if self.vertex_buffers
+            .get(id.0)
             .ok_or(InvalidBufferId(id))?
-            .fill(&self.device, &self.queue, data);
+            .fill_exact(self, data).is_err() 
+            {
+                let mut buffer = self.vertex_buffers.get(id.0).unwrap().clone();
+                buffer.fill(self, data);
+                *self.vertex_buffers.get_mut(id.0).unwrap() = buffer;
+            }
 
         Ok(())
-    }
-
-    // pub fn 
-
-    /// Updates the camera buffer with the current camera and transform.
-    ///
-    /// # Parameters
-    /// - `camera`: The camera to update.
-    /// - `transform`: The transform of the camera.
-    pub fn update_camera(&self, camera: &mut Camera, transform: &Transform) {
-        camera.set_aspect(self.size.width as f32 / self.size.height as f32);
-        self.camera_buffer.update(camera, transform, &self.queue);
     }
 
     /// Retrieves the current size of the renderer.
@@ -217,7 +195,7 @@ impl Renderer {
     async fn init_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
         adapter.request_device(
             &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::PUSH_CONSTANTS | wgpu::Features::BGRA8UNORM_STORAGE,
+                required_features: wgpu::Features::PUSH_CONSTANTS,
                 required_limits: wgpu::Limits {
                     max_push_constant_size: 128,
                     ..Default::default()
@@ -311,6 +289,27 @@ impl DrawContext {
     /// - `canvas`: The canvas to present.
     /// - `renderer`: The renderer instance used to submit commands.
     pub fn submit(self, canvas: Canvas, renderer: &Renderer) {
+        // TODO: copy texture
+        // self.encoder.copy_texture_to_texture(
+        //     wgpu::ImageCopyTexture {
+        //         texture: renderer.taa.history_texture().in_texture().texture(),
+        //         mip_level: 0,
+        //         origin: wgpu::Origin3d::ZERO,
+        //         aspect: wgpu::TextureAspect::All,
+        //     },
+        //     wgpu::ImageCopyTexture {
+        //         texture: renderer.taa.history_texture().out_texture().texture(),
+        //         mip_level: 0,
+        //         origin: wgpu::Origin3d::ZERO,
+        //         aspect: wgpu::TextureAspect::All,
+        //     },
+        //     wgpu::Extent3d {
+        //         width: renderer.taa.history_texture().out_texture().texture().width(),
+        //         height: renderer.taa.history_texture().out_texture().texture().height(),
+        //         depth_or_array_layers: 1,
+        //     }
+        // );
+        
         renderer.queue.submit(std::iter::once(self.encoder.finish()));
         canvas.texture.present();
     }
@@ -331,22 +330,30 @@ impl<'a> RenderPass<'a> {
     /// - `renderer`: The renderer instance used for drawing.
     pub fn draw(
         &mut self,
-        drawable: &impl Drawable,
-        transform: &Transform,
-        pipeline: &'a PipelineKey,
         renderer: &'a Renderer,
+        drawable: Option<&dyn Drawable>,
+        transform: &Transform,
+        pipeline: &'a Pipeline,
+        shader_bindings: &[&'a dyn ShaderBinding],
     ) {
-        self.pass.set_pipeline(renderer.render_pipelines.get(pipeline).inner());
-        self.pass.set_bind_group(0, renderer.camera_buffer.bind_group(), &[]);
-        self.pass.set_bind_group(1, renderer.taa.config_buffer().bind_group(), &[]);
+        if let Pipeline::Render(p) = pipeline {
+            self.pass.set_pipeline(p);
+        } else {
+            panic!("Cannot use compute pipeline in draw() command");
+        }
+
+        for (i, binding) in shader_bindings.iter().enumerate() {
+            self.pass.set_bind_group(i as u32, &binding.get_resource().bind_group, &[]);
+        }
+
         self.pass.set_push_constants(
             wgpu::ShaderStages::VERTEX,
             0,
             bytemuck::cast_slice(&[transform.uniform()]),
         );
-        if let Some(id) = drawable.vertex_buffer() {
-            self.pass.set_vertex_buffer(0, renderer.vertex_buffers[id.0].inner().slice(..)); 
-            self.pass.draw(0..*renderer.vertex_buffers[id.0].capacity() as u32, 0..1);
+        if let Some(drawable) = drawable {
+            self.pass.set_vertex_buffer(0, renderer.vertex_buffers[drawable.vertex_buffer().0].inner().slice(..)); 
+            self.pass.draw(0..*renderer.vertex_buffers[drawable.vertex_buffer().0].capacity() as u32, 0..1);
         } else {
             self.pass.draw(0..6, 0..1);
         }
@@ -371,11 +378,5 @@ pub trait Drawable {
     ///
     /// # Returns
     /// The ID of the vertex buffer.
-    fn vertex_buffer(&self) -> Option<BufferId>;
-}
-
-impl Drawable for () {
-    fn update(&mut self, _: &mut Renderer) {}
-
-    fn vertex_buffer(&self) -> Option<BufferId> { None }
+    fn vertex_buffer(&self) -> BufferId;
 }

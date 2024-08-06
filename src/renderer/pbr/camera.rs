@@ -1,8 +1,7 @@
 use bytemuck::{Pod, Zeroable};
-use derive_getters::Getters;
 use nalgebra_glm as glm;
 use serde::{Deserialize, Serialize};
-use crate::renderer::hal::{buffer::Buffer, Padding};
+use crate::renderer::hal::Padding;
 use super::transform::Transform;
 
 /// A matrix to convert OpenGL coordinate system to WGPU coordinate system.
@@ -123,82 +122,5 @@ impl CameraUniform {
             view_projection: camera.build_view_projection(transform),
             _padding: Padding::default(),
         }
-    }
-}
-
-/// A buffer that holds camera uniforms and provides bind group layouts and bind groups for rendering.
-#[derive(Getters)]
-pub struct CameraBuffer {
-    buffer: Buffer<CameraUniform>,
-    bind_group_layout: wgpu::BindGroupLayout,
-    bind_group: wgpu::BindGroup,
-}
-
-impl CameraBuffer {
-    /// Creates a new `CameraBuffer` and initializes it with default camera uniform data.
-    ///
-    /// # Arguments
-    ///
-    /// * `device` - The device to use for creating resources.
-    /// * `queue` - The queue to use for submitting commands.
-    ///
-    /// # Returns
-    ///
-    /// A new instance of `CameraBuffer`.
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> CameraBuffer {
-        let mut buffer = Buffer::new(
-            device, 
-            1, 
-            wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST
-        );
-        buffer.fill(device, queue, &[CameraUniform::default()]);
-
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Camera bind group layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }
-            ],
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Camera bind group"),
-            layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0, 
-                resource: buffer.inner().as_entire_binding(),
-            }]
-        });
-        
-        CameraBuffer {
-            buffer,
-            bind_group_layout,
-            bind_group,
-        }
-    }
-
-    /// Updates the camera buffer with new camera and transform data.
-    ///
-    /// # Arguments
-    ///
-    /// * `camera` - The camera to update.
-    /// * `transform` - The transform of the camera.
-    /// * `queue` - The queue to use for submitting commands.
-    pub fn update(
-        &self, 
-        camera: &Camera,
-        transform: &Transform,
-        queue: &wgpu::Queue
-    ) {
-        self.buffer.fill_exact(queue, &[CameraUniform::new(camera, transform)])
-            .expect("Can't fill camera buffer");
     }
 }
