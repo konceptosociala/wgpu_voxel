@@ -30,7 +30,7 @@ pub struct Renderer {
     config: wgpu::SurfaceConfiguration,
     size: PhysicalSize<u32>,
     vertex_buffers: Vec<Buffer<Vertex>>,
-    depth_texture: Texture,
+    depth_texture: Option<Texture>,
 }
 
 impl Renderer {
@@ -57,21 +57,7 @@ impl Renderer {
 
         let config = Self::init_config(surface_format, size, surface_caps);
 
-        let depth_texture = Texture::new(
-            &device, 
-            TextureDescriptor {
-                width: config.width,
-                height: config.height,
-                filter: TextureFilter::Linear,
-                dimension: TextureDimension::D2,
-                format: TextureFormat::Depth32Float,
-                usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::TEXTURE_BINDING,
-                depth: None,
-                label: "Depth data",
-            },
-        );
-
-        Ok(Renderer {
+        let mut renderer = Renderer {
             surface,
             device,
             queue,
@@ -79,8 +65,24 @@ impl Renderer {
             size,
             window,
             vertex_buffers: vec![],
-            depth_texture,
-        })
+            depth_texture: None,
+        };
+
+        renderer.depth_texture = Some(Texture::new(
+            &renderer, 
+            TextureDescriptor {
+                width: renderer.config.width,
+                height: renderer.config.height,
+                filter: TextureFilter::Linear,
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Depth32Float,
+                usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::TEXTURE_BINDING,
+                depth: None,
+                label: "Depth data",
+            },
+        ));
+
+        Ok(renderer)
     }
 
     /// Retrieves the current canvas for drawing.
@@ -129,10 +131,12 @@ impl Renderer {
         self.config.height = new_size.height;
         self.surface.configure(&self.device, &self.config);
 
-        let mut depth_descr = *self.depth_texture.description();
-        depth_descr.width = self.config.width;
-        depth_descr.height = self.config.height;
-        self.depth_texture = Texture::new(&self.device, depth_descr);
+        if let Some(depth_texture) = &self.depth_texture {
+            let mut depth_descr = *depth_texture.description();
+            depth_descr.width = self.config.width;
+            depth_descr.height = self.config.height;
+            self.depth_texture = Some(Texture::new(self, depth_descr));
+        }
     }
 
     /// Creates a new vertex buffer with a specified capacity.
@@ -188,8 +192,8 @@ impl Renderer {
     ///
     /// # Returns
     /// A reference to the `Texture`.
-    pub fn depth_texture(&self) -> &Texture {
-        &self.depth_texture
+    pub fn depth_texture(&self) -> Option<&Texture> {
+        self.depth_texture.as_ref()
     }
 
     async fn init_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
@@ -251,30 +255,30 @@ impl DrawContext {
     ///
     /// # Returns
     /// A `RenderPass` instance for issuing draw commands.
-    pub fn pass<'a>(
+    pub fn render_pass<'a>(
         &'a mut self,
-        canvas: &'a Canvas,
-        depth_texture: &'a Texture,
+        canvas: &'a impl RenderSurface,
+        depth_texture: Option<&'a Texture>,
     ) -> RenderPass<'a> {
         let pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render pass"),
-            color_attachments: &[
-                Some(wgpu::RenderPassColorAttachment {
-                    view: &canvas.view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                }),
-            ],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: depth_texture.view(),
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: canvas.view(),
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                     store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
+                },
+            })],
+            depth_stencil_attachment: depth_texture.map(|t| {
+                wgpu::RenderPassDepthStencilAttachment {
+                    view: t.view(),
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }
             }),
             occlusion_query_set: None,
             timestamp_writes: None,
@@ -283,35 +287,70 @@ impl DrawContext {
         RenderPass { pass }
     }
 
-    /// Submits the drawing commands and presents the canvas.
+    pub fn compute_pass(&mut self) -> ComputePass<'_> {
+        let pass = self.encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Compute pass"),
+            timestamp_writes: None,
+        });
+
+        ComputePass { pass }
+    }
+
+    pub fn copy_texture(&mut self, from: &Texture, to: &Texture) {
+        self.encoder.copy_texture_to_texture(
+            wgpu::ImageCopyTexture {
+                texture: from.texture(),
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyTexture {
+                texture: to.texture(),
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: to.description().width,
+                height: to.description().height,
+                depth_or_array_layers: 1,
+            }
+        );
+    }
+
+    /// Applies the drawing commands and presents the canvas.
     ///
     /// # Parameters
     /// - `canvas`: The canvas to present.
     /// - `renderer`: The renderer instance used to submit commands.
-    pub fn submit(self, canvas: Canvas, renderer: &Renderer) {
-        // TODO: copy texture
-        // self.encoder.copy_texture_to_texture(
-        //     wgpu::ImageCopyTexture {
-        //         texture: renderer.taa.history_texture().in_texture().texture(),
-        //         mip_level: 0,
-        //         origin: wgpu::Origin3d::ZERO,
-        //         aspect: wgpu::TextureAspect::All,
-        //     },
-        //     wgpu::ImageCopyTexture {
-        //         texture: renderer.taa.history_texture().out_texture().texture(),
-        //         mip_level: 0,
-        //         origin: wgpu::Origin3d::ZERO,
-        //         aspect: wgpu::TextureAspect::All,
-        //     },
-        //     wgpu::Extent3d {
-        //         width: renderer.taa.history_texture().out_texture().texture().width(),
-        //         height: renderer.taa.history_texture().out_texture().texture().height(),
-        //         depth_or_array_layers: 1,
-        //     }
-        // );
-        
+    pub fn apply(self, canvas: Canvas, renderer: &Renderer) {        
         renderer.queue.submit(std::iter::once(self.encoder.finish()));
         canvas.texture.present();
+    }
+}
+
+pub struct ComputePass<'a> {
+    pass: wgpu::ComputePass<'a>,
+}
+
+impl<'a> ComputePass<'a> {
+    pub fn compute(
+        &mut self,
+        pipeline: &'a Pipeline,
+        shader_bindings: &[&'a dyn ShaderBinding],
+        size: PhysicalSize<u32>,
+    ) {
+        if let Pipeline::Compute(p) = pipeline {
+            self.pass.set_pipeline(p);
+        } else {
+            panic!("Cannot use render pipeline in compute() command");
+        }
+
+        for (i, binding) in shader_bindings.iter().enumerate() {
+            self.pass.set_bind_group(i as u32, &binding.get_resource().bind_group, &[]);
+        }
+
+        self.pass.dispatch_workgroups(size.width, size.height, 1);
     }
 }
 
@@ -321,13 +360,6 @@ pub struct RenderPass<'a> {
 }
 
 impl<'a> RenderPass<'a> {
-    /// Draws a drawable object using the specified transform and pipeline.
-    ///
-    /// # Parameters
-    /// - `drawable`: The object to draw.
-    /// - `transform`: The transform of the drawable object.
-    /// - `pipeline`: The pipeline to use for rendering.
-    /// - `renderer`: The renderer instance used for drawing.
     pub fn draw(
         &mut self,
         renderer: &'a Renderer,
@@ -360,10 +392,20 @@ impl<'a> RenderPass<'a> {
     }
 }
 
+pub trait RenderSurface {
+    fn view(&self) -> &wgpu::TextureView;
+}
+
 /// Represents the canvas used for rendering.
 pub struct Canvas {
     texture: wgpu::SurfaceTexture,
     view: wgpu::TextureView,
+}
+
+impl RenderSurface for Canvas {
+    fn view(&self) -> &wgpu::TextureView {
+        &self.view
+    }
 }
 
 /// Trait for drawable objects.

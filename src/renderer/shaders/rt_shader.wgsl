@@ -2,9 +2,6 @@
 
 // ========= Uniforms =========
 
-// @group(0) @binding(0)
-// var output_texture: texture_storage_2d<rgba8unorm, write>;
-
 struct TaaConfig {
     jitter: f32,
 };
@@ -158,7 +155,7 @@ fn camera_new(
 fn camera_render(camera: Camera, cubes: ptr<function, array<Cube, 3>>, pos: vec2<f32>) -> Color {
     let ray = ray_on_coords(pos, camera);
 
-    return ray_color(ray, pos, camera.scan_depth, cubes);
+    return ray_color(ray, vec2<f32>(f32(pos.x), f32(pos.y)), camera.scan_depth, cubes);
 }
 
 // ========= Ray =========
@@ -170,8 +167,8 @@ struct Ray {
 
 fn ray_on_coords(pos: vec2<f32>, camera: Camera) -> Ray {
     let pixel_sample = camera.first_pixel
-        + (pos.x * camera.pixel_delta_u)
-        + (pos.y * camera.pixel_delta_v);
+        + (f32(pos.x) * camera.pixel_delta_u)
+        + (f32(pos.y) * camera.pixel_delta_v);
 
     let ray_direction = pixel_sample - camera.center;
 
@@ -231,28 +228,42 @@ fn hit_record_set_face_normal(record: ptr<function, HitRecord>, ray: Ray, outwar
 
 // ========= Compute =========
 
-// @compute @workgroup_size(1)
-// fn compute_rt(
-//     @builtin(global_invocation_id) id: vec3<u32>
-// ) {
-//     let camera = camera_new(1280u, 720u, 10u);
+@compute @workgroup_size(1)
+fn cs_main(
+    @builtin(global_invocation_id) id: vec3<u32>
+) {
+    // let camera = camera_new(1280u, 720u, 10u);
 
-//     var cubes = array(
-//         Cube(vec3<f32>(-0.085, -0.125, -0.25)),
-//         Cube(vec3<f32>(0.085, -0.125, -0.25)),
-//     );
+    // var cubes = array(        
+    //     Cube(vec3<f32>(-0.2, -0.125, -0.25)),
+    //     Cube(vec3<f32>(-0.06, -0.125, -0.25)),
+    //     Cube(vec3<f32>(0.08, -0.125, -0.25)),
+    // );
 
-//     let pos = (frag_pos.xy + vec2<f32>(1.0, 1.0)) * 0.5;
+    // let color = vec3<f32>(
+    //     f32(id.x)/1280.0,
+    //     f32(id.y)/720.0,
+    //     0.0,
+    // );
 
-//     let coord = vec2<u32>(
-//         u32(pos.x * 400.0),
-//         u32(pos.y * 100.0),
-//     );
+    // let size = textureDimensions(color_texture);
+    // let center = vec2f(size) / 2.0;
 
-//     // return vec4<f32>(camera_render(camera, &cubes, frag_pos.xy), 1.0);
+    // // the pixel we're going to write to
+    // let pos = id.xy;
 
-//     textureStore(history_texture_in, id.xy, vec4<f32>(1.0, 0.0, 0.0, 1.0));
-// }
+    // // The distance from the center of the texture
+    // let dist = distance(vec2f(pos), center);
+
+    // // Compute stripes based on the distance
+    // let stripe = dist / 32.0 % 2.0;
+    // let red = vec4f(1, 0, 0, 1);
+    // let cyan = vec4f(0, 1, 1, 1);
+    // let color = select(red, cyan, stripe < 1.0);
+
+    // // textureStore(color_texture, id.xy, vec4<f32>(camera_render(camera, &cubes, id.xy), 1.0));
+    // textureStore(color_texture, pos, color);
+}
 
 @vertex
 fn vs_main(
@@ -290,8 +301,7 @@ fn vs_main(
     };
 
     return vec4<f32>(
-        x + (taa_config.jitter / 1280.0), 
-        y + (taa_config.jitter / 720.0), 
+        x,y,
         0.0, 
         1.0
     );
@@ -307,13 +317,6 @@ fn fs_main(
         Cube(vec3<f32>(-0.2, -0.125, -0.25)),
         Cube(vec3<f32>(-0.06, -0.125, -0.25)),
         Cube(vec3<f32>(0.08, -0.125, -0.25)),
-    );
-
-    let pos = (frag_pos.xy + vec2<f32>(1.0, 1.0)) * 0.5;
-
-    let coord = vec2<u32>(
-        u32(pos.x * 400.0),
-        u32(pos.y * 100.0),
     );
 
     return vec4<f32>(camera_render(camera, &cubes, frag_pos.xy), 1.0);

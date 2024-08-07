@@ -1,114 +1,12 @@
 use bytemuck::{Pod, Zeroable};
-// use derive_getters::Getters;
 use rand::Rng;
-// use super::{buffer::{Buffer, BufferResource}, texture::{Texture, TextureResource}};
+use crate::renderer::Renderer;
 
-// pub type Colorf32 = nalgebra_glm::Vec4;
+use super::{
+    buffer::{Buffer, BufferResource}, pipeline::ShaderBinding, texture::*
+};
 
-// structstruck::strike! {
-//     #[strikethrough[derive(Getters)]]
-//     pub struct Taa {
-//         history_texture: TextureResource,
-//         velocity_texture: TextureResource,
-//         config_buffer: BufferResource<
-//             #[repr(C)]
-//             #[derive(Debug, Clone, Copy, Zeroable, Pod)]
-//             pub struct TaaConfig {
-//                 jitter: f32,
-//             }
-//         >,
-//     }
-// }
-
-// #[derive(Getters)]
-// pub struct TaaTexture {
-//     in_texture: Texture,
-//     out_texture: Texture,
-//     bind_group_layout: wgpu::BindGroupLayout,
-//     bind_group: wgpu::BindGroup,
-// }
-
-// impl TaaTexture {
-//     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration, label: &'static str) -> TaaTexture {
-//         let in_texture = Texture::new(
-//             device, 
-//             config, 
-//             wgpu::FilterMode::Linear, 
-//             wgpu::TextureDimension::D2, 
-//             wgpu::TextureFormat::Rgba8Unorm,
-//             wgpu::TextureUsages::TEXTURE_BINDING 
-//                 | wgpu::TextureUsages::COPY_SRC
-//                 | wgpu::TextureUsages::STORAGE_BINDING,
-//             None,
-//             label,
-//         );
-
-//         let out_texture = Texture::new(
-//             device, 
-//             config, 
-//             wgpu::FilterMode::Linear, 
-//             wgpu::TextureDimension::D2, 
-//             wgpu::TextureFormat::Rgba8Unorm,
-//             wgpu::TextureUsages::TEXTURE_BINDING 
-//                 | wgpu::TextureUsages::COPY_DST,
-//             None,
-//             label,
-//         );
-
-//         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-//             label: Some(format!("{label} texture bind group layout").as_str()),
-//             entries: &[
-//                 wgpu::BindGroupLayoutEntry {
-//                     binding: 0,
-//                     visibility: wgpu::ShaderStages::COMPUTE,
-//                     ty: wgpu::BindingType::StorageTexture {
-//                         access: wgpu::StorageTextureAccess::WriteOnly,
-//                         format: wgpu::TextureFormat::Rgba8Unorm,
-//                         view_dimension: wgpu::TextureViewDimension::D2,
-//                     },
-//                     count: None,
-//                 },
-//                 wgpu::BindGroupLayoutEntry {
-//                     binding: 1,
-//                     visibility: wgpu::ShaderStages::FRAGMENT,
-//                     ty: wgpu::BindingType::Texture {
-//                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
-//                         view_dimension: wgpu::TextureViewDimension::D2,
-//                         multisampled: false,
-//                     },
-//                     count: None,
-//                 },
-//                 wgpu::BindGroupLayoutEntry {
-//                     binding: 2,
-//                     visibility: wgpu::ShaderStages::FRAGMENT,
-//                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-//                     count: None,
-//                 }
-//             ],
-//         });
-
-//         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-//             label: Some(format!("{label} texture bind group").as_str()),
-//             layout: &bind_group_layout,
-//             entries: &[
-//                 wgpu::BindGroupEntry {
-//                     binding: 0,
-//                     resource: wgpu::BindingResource::TextureView(in_texture.view())
-//                 },
-//                 wgpu::BindGroupEntry {
-//                     binding: 1, 
-//                     resource: wgpu::BindingResource::TextureView(out_texture.view()),
-//                 },
-//                 wgpu::BindGroupEntry {
-//                     binding: 2,
-//                     resource: wgpu::BindingResource::Sampler(out_texture.sampler()),
-//                 }
-//             ]
-//         });
-
-//         TaaTexture { in_texture, out_texture, bind_group_layout, bind_group }
-//     }
-// }
+pub type Colorf32 = nalgebra_glm::Vec4;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod)]
@@ -126,50 +24,94 @@ impl TaaConfig {
     }
 }
 
-// impl TaaConfigBuffer {
-//     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> TaaConfigBuffer {
-//         let inner = Buffer::new(device, 1, wgpu::BufferUsages::UNIFORM);
-//             inner.fill_exact(queue, &[TaaConfig::new()]).unwrap();
+pub struct Taa {
+    pub render_texture: Texture,
+    pub history_texture: TextureResource,
+    pub velocity_texture: TextureResource,
+    pub config_buffer: BufferResource<TaaConfig>,
+}
 
-//             let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-//                 label: Some("TAA config bind group layout"),
-//                 entries: &[
-//                     wgpu::BindGroupLayoutEntry {
-//                         binding: 0,
-//                         visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-//                         ty: wgpu::BindingType::Buffer {
-//                             ty: wgpu::BufferBindingType::Uniform,
-//                             has_dynamic_offset: false,
-//                             min_binding_size: None,
-//                         },
-//                         count: None,
-//                     }
-//                 ],
-//             });
+impl Taa {
+    pub fn new(renderer: &Renderer) -> Taa {
+        Taa {
+            render_texture: Texture::new(renderer, TextureDescriptor {
+                width: renderer.size().width,
+                height: renderer.size().height,
+                filter: TextureFilter::Linear,
+                dimension: TextureDimension::D2,
+                usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::COPY_SRC,
+                format: TextureFormat::Bgra8UnormSrgb,
+                depth: None,
+                label: "TAA Color",
+            }), 
+            history_texture: TextureResource::new(
+                renderer, 
+                Texture::new(renderer, TextureDescriptor {
+                    width: renderer.size().width,
+                    height: renderer.size().height,
+                    filter: TextureFilter::Linear,
+                    dimension: TextureDimension::D2,
+                    usage: TextureUsage::TEXTURE_BINDING | TextureUsage::COPY_DST,
+                    format: TextureFormat::Bgra8UnormSrgb,
+                    depth: None,
+                    label: "TAA History",
+                }), 
+                TextureResourceUsage::TEXTURE | TextureResourceUsage::SAMPLER, 
+                Some(TextureSampleType::Float { filterable: true }),
+            ),
+            velocity_texture: TextureResource::new(
+                renderer, 
+                Texture::new(renderer, TextureDescriptor {
+                    width: renderer.size().width,
+                    height: renderer.size().height,
+                    filter: TextureFilter::Linear,
+                    dimension: TextureDimension::D2,
+                    usage: TextureUsage::all() - TextureUsage::RENDER_ATTACHMENT,
+                    format: TextureFormat::Rgba16Float,
+                    depth: None,
+                    label: "TAA Velocity",
+                }), 
+                TextureResourceUsage::STORAGE, 
+                Some(TextureSampleType::Float { filterable: true }),
+            ),
+            config_buffer: BufferResource::new(
+                renderer,
+                Buffer::new(renderer, 1, wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST),
+                wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE, 
+                wgpu::BufferBindingType::Uniform,
+            ),
+        }
+    }
 
-//             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-//                 label: Some("TAA config bind group"),
-//                 layout: &bind_group_layout,
-//                 entries: &[wgpu::BindGroupEntry {
-//                     binding: 0, 
-//                     resource: inner.inner().as_entire_binding(),
-//                 }]
-//             });
+    pub fn update(&mut self, renderer: &Renderer) {
+        self.config_buffer.buffer.fill_exact(renderer, &[TaaConfig::new()])
+            .expect("Cannot fill TAA buffer");
 
-//             TaaConfigBuffer { inner, bind_group_layout, bind_group }
-//     }
-// }
+        let mut render_descr = *self.render_texture.description();
+        if render_descr.width != renderer.size().width || render_descr.height != renderer.size().height {
+            render_descr.width = renderer.size().width;
+            render_descr.height = renderer.size().height;
+            self.render_texture = Texture::new(renderer, render_descr);
+        }
 
-// impl Taa {
-//     pub fn new(
-//         device: &wgpu::Device, 
-//         queue: &wgpu::Queue, 
-//         config: &wgpu::SurfaceConfiguration,
-//     ) -> Taa {
-//         Taa {
-//             history_texture: TaaTexture::new(device, config, "TAA history"),
-//             velocity_texture: TaaTexture::new(device, config, "TAA velocity"),
-//             config_buffer: TaaConfigBuffer::new(device, queue),
-//         }
-//     }
-// }
+        let mut history_descr = *self.history_texture.texture.description();
+        if history_descr.width != renderer.size().width || history_descr.height != renderer.size().height {
+            history_descr.width = renderer.size().width;
+            history_descr.height = renderer.size().height;
+            self.history_texture = TextureResource::new(
+                renderer, 
+                Texture::new(renderer, history_descr), 
+                TextureResourceUsage::TEXTURE | TextureResourceUsage::SAMPLER, 
+                Some(TextureSampleType::Float { filterable: true }),
+            );
+        }
+    }
+
+    pub fn resources(&self) -> Vec<&dyn ShaderBinding> {
+        vec![
+            &self.config_buffer,
+            &self.history_texture,
+            &self.velocity_texture,
+        ]
+    }
+}

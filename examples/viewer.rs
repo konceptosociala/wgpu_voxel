@@ -108,7 +108,7 @@ impl Engine for VoxelViewer {
         let mut ctx = renderer.draw_ctx();
 
         {
-            let mut render_pass = ctx.pass(&canvas, renderer.depth_texture());
+            let mut render_pass = ctx.render_pass(&[&canvas], renderer.depth_texture());
 
             for (_, (camera, transform)) in &mut world.query::<(&mut Camera, &Transform)>() {
                 // renderer.update_camera(camera, transform);
@@ -119,7 +119,7 @@ impl Engine for VoxelViewer {
             }
         }
 
-        ctx.submit(canvas, renderer);
+        ctx.apply(canvas, renderer);
 
         Ok(())
     }

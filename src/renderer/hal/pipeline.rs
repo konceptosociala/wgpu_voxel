@@ -8,6 +8,7 @@ pub trait ShaderBinding {
     fn get_resource(&self) -> &ShaderResource;
 }
 
+#[derive(Debug)]
 pub struct ShaderResource {
     pub(crate) bind_group_layout: wgpu::BindGroupLayout,
     pub(crate) bind_group: wgpu::BindGroup,
@@ -91,7 +92,34 @@ impl Pipeline {
         Pipeline::Render(pipeline)
     }
 
-    pub fn new_compute() -> Pipeline {
-        todo!()
+    pub fn new_compute(
+        renderer: &Renderer,
+        shader: Shader,  
+        bindings: &[&dyn ShaderBinding],
+        label: &str,
+    ) -> Pipeline {
+        let shader = renderer.device.create_shader_module(shader);
+
+        let layout = renderer.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some(format!("{label} Pipeline Layout").as_str()),
+            bind_group_layouts: &bindings
+                .to_vec()
+                .iter()
+                .map(|b| &b.get_resource().bind_group_layout)
+                .collect::<Vec<_>>(),
+            push_constant_ranges: &[wgpu::PushConstantRange {
+                stages: wgpu::ShaderStages::VERTEX,
+                range: 0..128,
+            }],
+        });
+
+        let pipeline = renderer.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some(format!("{label} Pipeline layout").as_str()),
+            layout: Some(&layout),
+            module: &shader,
+            entry_point: "cs_main",
+        });
+
+        Pipeline::Compute(pipeline)
     }
 }
