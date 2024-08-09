@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 use derive_getters::Getters;
+use game_loop::winit::dpi::PhysicalSize;
 
 use crate::renderer::{RenderSurface, Renderer};
 
@@ -30,9 +31,14 @@ bitflags! {
     }
 }
 
+#[readonly::make]
 pub struct TextureResource {
     pub texture: Texture,
     pub resource: ShaderResource,
+    #[readonly]
+    pub usage: TextureResourceUsage,
+    #[readonly]
+    pub sample_type: Option<wgpu::TextureSampleType>,
 }
 
 impl ShaderBinding for TextureResource {
@@ -61,18 +67,6 @@ impl TextureResource {
                 .enumerate()
                 .filter_map(|(i, usage)| {
                     match usage {
-                        TextureResourceUsage::STORAGE => {
-                            Some(wgpu::BindGroupLayoutEntry {
-                                binding: i as u32,
-                                visibility: wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::StorageTexture {
-                                    access: wgpu::StorageTextureAccess::WriteOnly,
-                                    format: texture.description.format,
-                                    view_dimension,
-                                },
-                                count: None,
-                            })
-                        },
                         TextureResourceUsage::TEXTURE => {
                             Some(wgpu::BindGroupLayoutEntry {
                                 binding: i as u32,
@@ -92,6 +86,18 @@ impl TextureResource {
                                 binding: i as u32,
                                 visibility: wgpu::ShaderStages::FRAGMENT,
                                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                                count: None,
+                            })
+                        },
+                        TextureResourceUsage::STORAGE => {
+                            Some(wgpu::BindGroupLayoutEntry {
+                                binding: i as u32,
+                                visibility: wgpu::ShaderStages::COMPUTE | wgpu::ShaderStages::FRAGMENT,
+                                ty: wgpu::BindingType::StorageTexture {
+                                    access: wgpu::StorageTextureAccess::WriteOnly,
+                                    format: texture.description.format,
+                                    view_dimension,
+                                },
                                 count: None,
                             })
                         },
@@ -131,9 +137,24 @@ impl TextureResource {
             texture,
             resource: ShaderResource {
                 bind_group,
-                bind_group_layout
+                bind_group_layout,
             },
+            usage,
+            sample_type,
         }
+    }
+
+    pub fn resize(&mut self, renderer: &Renderer, size: PhysicalSize<u32>) {
+        let mut descr = self.texture.description;
+        descr.width = size.width;
+        descr.height = size.height;
+
+        *self = TextureResource::new(
+            renderer,
+            Texture::new(renderer, descr), 
+            self.usage, 
+            self.sample_type,
+        )
     }
 }
 
@@ -209,5 +230,12 @@ impl Texture {
             sampler,
             description,
         }
+    }
+
+    pub fn resize(&mut self, renderer: &Renderer, size: PhysicalSize<u32>) {
+        let mut descr = self.description;
+        descr.width = size.width;
+        descr.height = size.height;
+        *self = Texture::new(renderer, descr);
     }
 }

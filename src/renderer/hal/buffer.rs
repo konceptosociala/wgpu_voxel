@@ -84,11 +84,15 @@ impl<T: Pod> Buffer<T> {
     pub fn fill(&mut self, renderer: &Renderer, data: &[T]) {
         let bytes_to_write = size_of_val(data);
         if bytes_to_write > self.capacity * size_of::<T>() {
-            self.inner = Arc::new(Buffer::<T>::new_inner(&renderer.device, bytes_to_write, self.inner.usage()));
-            self.capacity = data.len();
+            self.resize(renderer, data.len());
         }
 
         self.fill_exact(renderer, data).unwrap();
+    }
+
+    pub fn resize(&mut self, renderer: &Renderer, capacity: usize) {
+        self.inner = Arc::new(Buffer::<T>::new_inner(&renderer.device, capacity * size_of::<T>(), self.inner.usage()));
+        self.capacity = capacity;
     }
 
     fn new_inner(device: &wgpu::Device, capacity: usize, usage: wgpu::BufferUsages) -> wgpu::Buffer {
@@ -102,9 +106,14 @@ impl<T: Pod> Buffer<T> {
 }
 
 
+#[readonly::make]
 pub struct BufferResource<T> {
     pub buffer: Buffer<T>,
     pub resource: ShaderResource,
+    #[readonly]
+    pub visibility: wgpu::ShaderStages,
+    #[readonly]
+    pub buffer_type: wgpu::BufferBindingType,
 }
 
 impl<T: Pod> BufferResource<T> {
@@ -147,7 +156,18 @@ impl<T: Pod> BufferResource<T> {
         BufferResource {
             buffer,
             resource,
+            visibility,
+            buffer_type,
         }
+    }
+
+    pub fn resize(&mut self, renderer: &Renderer, capacity: usize) {
+        *self = BufferResource::new(
+            renderer,
+            Buffer::new(renderer, capacity, self.buffer.inner.usage()),
+            self.visibility,
+            self.buffer_type,
+        )
     }
 }
 
