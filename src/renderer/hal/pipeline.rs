@@ -108,7 +108,7 @@ impl Pipeline {
                 .map(|b| &b.get_resource().bind_group_layout)
                 .collect::<Vec<_>>(),
             push_constant_ranges: &[wgpu::PushConstantRange {
-                stages: wgpu::ShaderStages::VERTEX,
+                stages: wgpu::ShaderStages::COMPUTE,
                 range: 0..128,
             }],
         });

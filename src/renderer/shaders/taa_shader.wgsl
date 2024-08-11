@@ -83,8 +83,21 @@ fn fs_main(
         frag_pos.y / f32(taa_config.canvas_height),
     );
 
+    let velocity = velocity_buffer[color_pos.x + color_pos.y * taa_config.canvas_width].xy;
+    let previous_pixel_pos = history_pos - velocity;
+
     let current_color = color_buffer[color_pos.x + color_pos.y * taa_config.canvas_width];
-    let history_color = textureSample(history_texture, history_sampler, history_pos);
+    var history_color = textureSample(history_texture, history_sampler, previous_pixel_pos);
+
+    let near_color0 = color_buffer[(color_pos.x + 1) + color_pos.y * taa_config.canvas_width];
+    let near_color1 = color_buffer[color_pos.x + (color_pos.y + 1) * taa_config.canvas_width];
+    let near_color2 = color_buffer[(color_pos.x - 1) + color_pos.y * taa_config.canvas_width];
+    let near_color3 = color_buffer[color_pos.x + (color_pos.y - 1) * taa_config.canvas_width];
+
+    let box_min = min(current_color, min(near_color0, min(near_color1, min(near_color2, near_color3))));
+    let box_max = max(current_color, max(near_color0, max(near_color1, max(near_color2, near_color3))));
+
+    history_color = clamp(history_color, box_min, box_max);
 
     let modulation_factor = 0.9;
 

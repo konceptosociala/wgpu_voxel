@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use bytemuck::Pod;
 use error::RenderError;
 use hal::{
     buffer::{Buffer, BufferId, InvalidBufferId}, 
@@ -9,10 +10,7 @@ use game_loop::winit::{
     dpi::PhysicalSize,
     window::Window,
 };
-use pbr::{
-    mesh::Vertex,
-    transform::Transform,
-};
+use pbr::mesh::Vertex;
 
 pub mod error;
 pub mod voxel;
@@ -296,6 +294,10 @@ impl DrawContext {
         ComputePass { pass }
     }
 
+    pub fn clear_buffer<T>(&mut self, buffer: &Buffer<T>) {
+        self.encoder.clear_buffer(buffer.inner(), 0, None);
+    }
+
     pub fn copy_texture(&mut self, from: &Texture, to: &Texture) {
         self.encoder.copy_texture_to_texture(
             wgpu::ImageCopyTexture {
@@ -334,8 +336,9 @@ pub struct ComputePass<'a> {
 }
 
 impl<'a> ComputePass<'a> {
-    pub fn compute(
+    pub fn compute<T: Pod>(
         &mut self,
+        instance_data: Option<&mut dyn InstanceData<UniformData = T>>,
         pipeline: &'a Pipeline,
         shader_bindings: &[&'a dyn ShaderBinding],
         size: PhysicalSize<u32>,
@@ -350,6 +353,13 @@ impl<'a> ComputePass<'a> {
             self.pass.set_bind_group(i as u32, &binding.get_resource().bind_group, &[]);
         }
 
+        if let Some(instance_data) = instance_data {
+            self.pass.set_push_constants(
+                0,
+                bytemuck::cast_slice(&[instance_data.uniform_data()]),
+            );
+        }
+
         self.pass.dispatch_workgroups(size.width, size.height, 1);
     }
 }
@@ -360,11 +370,11 @@ pub struct RenderPass<'a> {
 }
 
 impl<'a> RenderPass<'a> {
-    pub fn draw(
+    pub fn draw<T: Pod>(
         &mut self,
         renderer: &'a Renderer,
         drawable: Option<&dyn Drawable>,
-        transform: &Transform,
+        instance_data: Option<&mut dyn InstanceData<UniformData = T>>,
         pipeline: &'a Pipeline,
         shader_bindings: &[&'a dyn ShaderBinding],
     ) {
@@ -378,11 +388,14 @@ impl<'a> RenderPass<'a> {
             self.pass.set_bind_group(i as u32, &binding.get_resource().bind_group, &[]);
         }
 
-        self.pass.set_push_constants(
-            wgpu::ShaderStages::VERTEX,
-            0,
-            bytemuck::cast_slice(&[transform.uniform()]),
-        );
+        if let Some(instance_data) = instance_data {
+            self.pass.set_push_constants(
+                wgpu::ShaderStages::VERTEX,
+                0,
+                bytemuck::cast_slice(&[instance_data.uniform_data()]),
+            );
+        }
+        
         if let Some(drawable) = drawable {
             self.pass.set_vertex_buffer(0, renderer.vertex_buffers[drawable.vertex_buffer().0].inner().slice(..)); 
             self.pass.draw(0..*renderer.vertex_buffers[drawable.vertex_buffer().0].capacity() as u32, 0..1);
@@ -421,4 +434,10 @@ pub trait Drawable {
     /// # Returns
     /// The ID of the vertex buffer.
     fn vertex_buffer(&self) -> BufferId;
+}
+
+pub trait InstanceData {
+    type UniformData: Pod;
+
+    fn uniform_data(&mut self) -> Self::UniformData;
 }

@@ -37,7 +37,7 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    out.color = input.color;    
+    out.color = input.color;
     out.frag_pos = vec3<f32>((transform.transform_matrix * vec4<f32>(input.position, 1.0)).xyz);
 
     var transp = transpose(transform.inverse_matrix);

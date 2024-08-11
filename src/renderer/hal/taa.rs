@@ -95,5 +95,10 @@ impl Taa {
         if history_descr.width != renderer.size().width || history_descr.height != renderer.size().height {
             self.history_texture.resize(renderer, renderer.size());
         }
+
+        let viewport_size = renderer.size().width as usize * renderer.size().height as usize;
+        if *self.velocity_buffer.buffer.capacity() != viewport_size {
+            self.velocity_buffer.resize(renderer, viewport_size);
+        }
     }
 }

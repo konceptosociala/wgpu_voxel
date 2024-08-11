@@ -6,20 +6,29 @@ struct TaaConfig {
     jitter: f32,
 };
 
+struct Transform {
+    inverse_matrix: mat4x4<f32>,
+    prev_matrix: mat4x4<f32>,
+};
+
 // ========= Uniforms =========
 
 @group(0) @binding(0)
 var<uniform> taa_config: TaaConfig;
 
 @group(1) @binding(0)
-var<storage, read_write> velocity_buffer: array<vec4<f32>>;
+var<storage, read_write> color_buffer: array<vec4<f32>>;
 
 @group(2) @binding(0)
-var<storage, read_write> color_buffer: array<vec4<f32>>;
+var<storage, read_write> velocity_buffer: array<vec4<f32>>;
+
+var<push_constant> tmp_transform: Transform;
 
 // ========= Utils =========
 
 alias Color = vec3<f32>;
+
+alias Velocity = vec2<f32>;
 
 fn random_vec_in_unit_sphere(co: vec2<f32>) -> vec3<f32> {
     while (true) {
@@ -49,10 +58,31 @@ fn rand(co: vec2<f32>) -> f32 {
 }
 
 fn rand_range(co: vec2<f32>, min: f32, max: f32) -> f32 {
-    return min + (max-min)*rand(co);
+    return min + (max - min) * rand(co);
+}
+
+fn calc_velocity(new_pos: vec4<f32>, old_pos: vec4<f32>) -> Velocity {
+    var new_pos2 = new_pos;
+    var old_pos2 = old_pos;
+
+    old_pos2 /= old_pos2.w;
+    old_pos2.x = (old_pos2.x+1.0)/2.0;
+    old_pos2.y = (old_pos2.y+1.0)/2.0;
+    old_pos2.y = 1 - old_pos2.y;
+    
+    new_pos2 /= new_pos2.w;
+    new_pos2.x = (new_pos2.x+1)/2.0;
+    new_pos2.y = (new_pos2.y+1)/2.0;
+    new_pos2.y = 1 - new_pos2.y;
+    
+    return (new_pos2 - old_pos2).xy;
 }
 
 // ========= Cube =========
+
+const VOXEL_SIZE: f32 = 1.0 / 8.0;
+
+const HALF_VOXEL_SIZE: f32 = VOXEL_SIZE / 2.0;
 
 struct Cube {
     pos: vec3<f32>,
@@ -65,8 +95,8 @@ fn cube_hit(
     t_max: f32,
     record: ptr<function, HitRecord>,
 ) -> bool {
-    let start = (*cube).pos - vec3<f32>(0.0625, 0.0625, 0.0625);
-    let end = (*cube).pos + vec3<f32>(0.0625, 0.0625, 0.0625);
+    let start = (*cube).pos - vec3<f32>(HALF_VOXEL_SIZE, HALF_VOXEL_SIZE, HALF_VOXEL_SIZE);
+    let end = (*cube).pos + vec3<f32>(HALF_VOXEL_SIZE, HALF_VOXEL_SIZE, HALF_VOXEL_SIZE);
 
     let tx1 = (start.x - ray.origin.x) / ray.direction.x;
     let tx2 = (end.x - ray.origin.x) / ray.direction.x;
@@ -78,16 +108,16 @@ fn cube_hit(
     let t_near = max(min(tx1, tx2), max(min(ty1, ty2), min(tz1, tz2)));
     let t_far = min(max(tx1, tx2), min(max(ty1, ty2), max(tz1, tz2)));
 
-    if t_near > t_far || t_far < t_min {
+    if t_near > t_far || t_far < t_min || t_near > t_max {
         return false;
     }
 
     (*record).t = t_near;
     (*record).p = ray_at(ray, (*record).t);
     
-    let center = (end + start) * 0.5;
-    let outward_normal = vec3<f32>((*record).p.x - center.x, (*record).p.y - center.y, (*record).p.z - center.z);
-    hit_record_set_face_normal(record, ray, outward_normal);
+    let center = (end + start) * 0.5;    
+    // FIXME: per face cube normal
+    (*record).normal = normalize(vec3<f32>((*record).p.x - center.x, (*record).p.y - center.y, (*record).p.z - center.z));
 
     return true;
 }
@@ -117,6 +147,7 @@ fn cube_array_hit(
 
 // ========= Camera =========
 
+// TODO: uniform camera
 struct Camera {
     image_width: u32,
     image_height: u32,
@@ -137,7 +168,7 @@ fn camera_new(
     let focal_length = 1.0;
     let viewport_height = 2.0;
     let viewport_width = viewport_height * aspect;
-    let center = vec3<f32>(0.0, 0.0, 0.0);    
+    let center = vec3<f32>(0.0, 0.0, 0.0);
 
     let viewport_u = vec3<f32>(viewport_width, 0.0, 0.0);
     let viewport_v = vec3<f32>(0.0, -viewport_height, 0.0);
@@ -160,10 +191,33 @@ fn camera_new(
     return camera;
 }
 
-fn camera_render(camera: Camera, cubes: ptr<function, array<Cube, 3>>, pos: vec2<u32>) -> Color {
+fn camera_render(camera: Camera, cubes: ptr<function, array<Cube, 3>>, pos: vec2<u32>) {
     let ray = ray_on_coords(pos, camera);
 
-    return ray_color(ray, vec2<f32>(f32(pos.x), f32(pos.y)), camera.scan_depth, cubes);
+    var current_ray = ray;
+    current_ray.origin = (tmp_transform.inverse_matrix * vec4<f32>(current_ray.origin, 1.0)).xyz;
+    current_ray.direction = (tmp_transform.inverse_matrix * vec4<f32>(current_ray.direction, 0.0)).xyz;
+
+    // FIXME: valid velocity
+    velocity_buffer[pos.x + pos.y * taa_config.canvas_width] = vec4<f32>(
+        ray_velocity(
+            current_ray,
+            vec2<f32>(f32(pos.x), f32(pos.y)),
+            cubes,
+        ), 
+        0.0,
+        0.0,
+    );
+
+    color_buffer[pos.x + pos.y * taa_config.canvas_width] = vec4<f32>(
+        ray_color(
+            current_ray, 
+            vec2<f32>(f32(pos.x), f32(pos.y)), 
+            camera.scan_depth, 
+            cubes
+        ), 
+        1.0,
+    );
 }
 
 // ========= Ray =========
@@ -187,6 +241,17 @@ fn ray_at(ray: Ray, t: f32) -> vec3<f32> {
     return ray.origin + t * ray.direction;
 }
 
+fn ray_velocity(current_ray: Ray, co: vec2<f32>, cubes: ptr<function, array<Cube, 3>>) -> Velocity {
+    var hit_record = HitRecord();
+
+    if cube_array_hit(cubes, current_ray, 0.001, 3.40282347e+38, &hit_record) {
+        let p = tmp_transform.prev_matrix * (tmp_transform.inverse_matrix * vec4<f32>(hit_record.p, 1.0));
+        return calc_velocity(vec4<f32>(hit_record.p, 1.0), p);
+    }
+
+    return Velocity(0.0, 0.0);
+}
+
 fn ray_color(ray: Ray, co: vec2<f32>, scan_depth: u32, cubes: ptr<function, array<Cube, 3>>) -> Color {
     var current_ray = ray;
     var current_depth = scan_depth;
@@ -203,7 +268,7 @@ fn ray_color(ray: Ray, co: vec2<f32>, scan_depth: u32, cubes: ptr<function, arra
         if cube_array_hit(cubes, current_ray, 0.001, 3.40282347e+38, &hit_record) {
             let direction = hit_record.normal + normalize(random_vec_in_unit_sphere(co));
             current_ray = Ray(hit_record.p, direction);
-            attenuation *= 0.7;
+            attenuation *= 0.5;
             current_depth = current_depth - 1;
         } else {
             let unit_direction = normalize(current_ray.direction);
@@ -242,11 +307,12 @@ fn cs_main(
 ) {
     let camera = camera_new(taa_config.canvas_width, taa_config.canvas_height, 10u);
 
+    // TODO: uniform cube array
     var cubes = array(
-        Cube(vec3<f32>(-0.14, -0.125, -0.25)),
-        Cube(vec3<f32>(0.14, -0.125, -0.25)),
         Cube(vec3<f32>(0.0, -0.125, -0.25)),
+        Cube(vec3<f32>(-0.125, -0.125, -0.25)),
+        Cube(vec3<f32>(0.14, -0.125, -0.25)),
     );
 
-    color_buffer[id.x + id.y * taa_config.canvas_width] = vec4<f32>(camera_render(camera, &cubes, id.xy), 1.0);
+    camera_render(camera, &cubes, id.xy);
 }

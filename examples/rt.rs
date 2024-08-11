@@ -1,17 +1,24 @@
 use wgpu_voxel::{
     engine::Engine, 
-    event::WindowEvent, 
+    event::{MouseScrollDelta, WindowEvent}, 
     renderer::{
         error::RenderError, hal::{
             buffer::{Buffer, BufferResource}, pipeline::{include_wgsl, Pipeline},
             taa::Taa
-        }, 
-        pbr::transform::Transform, 
-        Renderer
+        }, rt::transform::RtTransform, Renderer
     }, 
     Game, PhysicalSize, WindowBuilder
 };
+
 use nalgebra_glm as glm;
+
+#[derive(Clone, Default, Debug)]
+struct CameraConfiguration {
+    limit: (f32, f32),
+    target_x: f32,
+    target_y: f32,
+    latest_pos: glm::Vec2,
+}
 
 #[derive(Default)]
 pub struct RayTracer {
@@ -19,19 +26,21 @@ pub struct RayTracer {
     color_buffer: Option<BufferResource<glm::Vec4>>,
     rt_pipeline: Option<Pipeline>,
     taa_pipeline: Option<Pipeline>,
+    tmp_transform: RtTransform,
+    camera_config: CameraConfiguration,
 }
 
 impl Engine for RayTracer {
     fn init(&mut self, _world: &mut hecs::World, renderer: &mut Renderer) {
+        let viewport_size = (renderer.size().width * renderer.size().height) as usize;
+
         let taa = Taa::new(renderer);
+
+        self.camera_config.limit = (-85.0, 85.0);
 
         self.color_buffer = Some(BufferResource::new(
             renderer, 
-            Buffer::new(
-                renderer, 
-                (renderer.size().width * renderer.size().height) as usize, 
-                wgpu::BufferUsages::STORAGE
-            ),
+            Buffer::new(renderer, viewport_size, wgpu::BufferUsages::STORAGE),
             wgpu::ShaderStages::COMPUTE | wgpu::ShaderStages::FRAGMENT, 
             wgpu::BufferBindingType::Storage { read_only: false },
         ));
@@ -41,8 +50,8 @@ impl Engine for RayTracer {
             include_wgsl!("../src/renderer/shaders/rt_shader.wgsl"),
             &[
                 &taa.config_buffer,
-                &taa.velocity_buffer,
                 self.color_buffer.as_ref().unwrap(),
+                &taa.velocity_buffer,
             ], 
             "Ray tracing"
         ));
@@ -67,26 +76,26 @@ impl Engine for RayTracer {
         let canvas = renderer.canvas()?;
         let mut ctx = renderer.draw_ctx();
 
-        let Some(taa) = self.taa.as_mut() else { unreachable!() };
+        let taa = self.taa.as_mut().unwrap();
+        let color_buffer = self.color_buffer.as_mut().unwrap();
 
         taa.update(renderer);
 
-        let cb = self.color_buffer.as_mut().unwrap();
-
         let viewport_size = renderer.size().width as usize * renderer.size().height as usize;
-        if *cb.buffer.capacity() != viewport_size {
-            cb.resize(renderer, viewport_size);
+        if *color_buffer.buffer.capacity() != viewport_size {
+            color_buffer.resize(renderer, viewport_size);
         }
 
         {
             let mut compute_pass = ctx.compute_pass();
 
             compute_pass.compute(
+                Some(&mut self.tmp_transform),
                 self.rt_pipeline.as_ref().unwrap(), 
                 &[
                     &taa.config_buffer,
+                    color_buffer,
                     &taa.velocity_buffer,
-                    self.color_buffer.as_ref().unwrap(),
                 ], 
                 renderer.size(),
             );
@@ -95,16 +104,16 @@ impl Engine for RayTracer {
         {
             let mut render_pass = ctx.render_pass(&taa.render_texture, renderer.depth_texture());
 
-            render_pass.draw(
+            render_pass.draw::<()>(
                 renderer,
                 None, 
-                &Transform::default(), 
+                None, 
                 self.taa_pipeline.as_ref().unwrap(), 
                 &[
                     &taa.config_buffer,
                     &taa.history_texture,
                     &taa.velocity_buffer,
-                    self.color_buffer.as_ref().unwrap(),
+                    color_buffer,
                 ],
             );
         }
@@ -117,16 +126,16 @@ impl Engine for RayTracer {
         {
             let mut render_pass = ctx.render_pass(&canvas, renderer.depth_texture());
 
-            render_pass.draw(
+            render_pass.draw::<()>(
                 renderer,
                 None, 
-                &Transform::default(), 
+                None, 
                 self.taa_pipeline.as_ref().unwrap(), 
                 &[
                     &taa.config_buffer,
                     &taa.history_texture,
                     &taa.velocity_buffer,
-                    self.color_buffer.as_ref().unwrap(),
+                    color_buffer,
                 ],
             );
         }
@@ -136,9 +145,50 @@ impl Engine for RayTracer {
         Ok(())
     }
 
-    fn update(&mut self, _world: &mut hecs::World) {}
+    fn update(&mut self, _world: &mut hecs::World) {
+    }
 
-    fn input(&mut self, _event: &WindowEvent, _world: &mut hecs::World) -> bool { false }
+    fn input(&mut self, event: &WindowEvent, _world: &mut hecs::World) -> bool {
+        match event {
+            WindowEvent::CursorMoved { position, .. } => {
+                let (delta_x, delta_y) = {
+                    if self.camera_config.latest_pos == glm::Vec2::default() {
+                        (0.0, 0.0)
+                    } else {
+                        (
+                            position.x as f32 - self.camera_config.latest_pos.x,
+                            position.y as f32 - self.camera_config.latest_pos.y,
+                        )
+                    }
+                };
+
+                self.camera_config.latest_pos = glm::vec2(position.x as f32, position.y as f32);
+
+                let local_x = self.tmp_transform.local_x();
+                let (tx, ty) = (self.camera_config.target_x, self.camera_config.target_y);
+
+                self.camera_config.target_x += delta_y * 0.005;
+                self.camera_config.target_y -= delta_x * 0.005;
+
+                self.camera_config.target_x = self.camera_config.target_x.clamp(
+                    self.camera_config.limit.0.to_radians(),
+                    self.camera_config.limit.1.to_radians(),
+                );
+
+                self.tmp_transform.rotation *=
+                    glm::quat_angle_axis(self.camera_config.target_x - tx, &local_x) *
+                    glm::quat_angle_axis(self.camera_config.target_y - ty, &glm::Vec3::y());
+
+                println!("{:?}", self.tmp_transform.rotation);
+            },
+            WindowEvent::MouseWheel { delta: MouseScrollDelta::LineDelta(_, delta), .. } => {
+                self.tmp_transform.translation.z += delta * 0.01;
+            },
+            _ => return false,
+        }
+
+        false
+    }
 }
 
 fn main() -> anyhow::Result<()> {
