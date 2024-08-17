@@ -4,13 +4,20 @@ use wgpu_voxel::{
     renderer::{
         error::RenderError, hal::{
             buffer::{Buffer, BufferResource}, pipeline::{include_wgsl, Pipeline},
-            taa::Taa
-        }, rt::transform::RtTransform, Renderer
+            taa::Taa, texture::{Texture, TextureDescriptor, TextureResource, TextureResourceUsage}
+        }, rt::transform::RtTransform, voxel::{chunk::Chunk, model::VoxelModel}, Renderer
     }, 
     Game, PhysicalSize, WindowBuilder
 };
 
 use nalgebra_glm as glm;
+
+const CHUNKS_RENDER_DISTANCE: u32 = 3;
+
+const fn chunks_count() -> u32 {
+    let distance = [CHUNKS_RENDER_DISTANCE, 1][(CHUNKS_RENDER_DISTANCE < 1) as usize];
+    (2 * distance + 1) * (2 * distance + 1)
+}
 
 #[derive(Clone, Default, Debug)]
 struct CameraConfiguration {
@@ -24,14 +31,26 @@ struct CameraConfiguration {
 pub struct RayTracer {
     taa: Option<Taa>,
     color_buffer: Option<BufferResource<glm::Vec4>>,
+    chunks_3d_texture: Option<TextureResource>,
+    palettes: Option<BufferResource<glm::Vec4>>,
     rt_pipeline: Option<Pipeline>,
     taa_pipeline: Option<Pipeline>,
+    chunk: Option<Chunk>,
     tmp_transform: RtTransform,
     camera_config: CameraConfiguration,
 }
 
 impl Engine for RayTracer {
     fn init(&mut self, _world: &mut hecs::World, renderer: &mut Renderer) {
+        self.chunk = Some(
+            VoxelModel::load_vox("model2.vox")
+                .unwrap()
+                .swap_remove(0)
+                .into_chunks()
+                .swap_remove(0)
+                .chunk
+        );
+
         let viewport_size = (renderer.size().width * renderer.size().height) as usize;
 
         let taa = Taa::new(renderer);
@@ -45,6 +64,36 @@ impl Engine for RayTracer {
             wgpu::BufferBindingType::Storage { read_only: false },
         ));
 
+        self.chunks_3d_texture = Some(TextureResource::new(
+            renderer,
+            Texture::new(renderer, TextureDescriptor {
+                width: Chunk::CHUNK_SIZE as u32,
+                height: Chunk::CHUNK_SIZE as u32,
+                depth: Some(Chunk::CHUNK_SIZE as u32 * chunks_count()),
+                filter: wgpu::FilterMode::Nearest,
+                dimension: wgpu::TextureDimension::D3,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                format: wgpu::TextureFormat::Rgba8Uint,
+                label: "Chunks",
+            }),
+            TextureResourceUsage::TEXTURE | TextureResourceUsage::SAMPLER,
+            Some(wgpu::TextureSampleType::Uint),
+        ));
+
+        self.palettes = Some(BufferResource::new(
+            renderer,
+            Buffer::new(renderer, 256 * chunks_count() as usize, wgpu::BufferUsages::STORAGE),
+            wgpu::ShaderStages::COMPUTE,
+            wgpu::BufferBindingType::Storage { read_only: true }, 
+        ));
+
+        self.chunk.as_ref().unwrap().write_to_texture(
+            renderer, 
+            &self.chunks_3d_texture.as_ref().unwrap().texture,
+            &self.palettes.as_ref().unwrap().buffer,
+            0,
+        ).unwrap();
+
         self.rt_pipeline = Some(Pipeline::new_compute(
             renderer, 
             include_wgsl!("../src/renderer/shaders/rt_shader.wgsl"),
@@ -52,6 +101,8 @@ impl Engine for RayTracer {
                 &taa.config_buffer,
                 self.color_buffer.as_ref().unwrap(),
                 &taa.velocity_buffer,
+                self.chunks_3d_texture.as_ref().unwrap(),
+                self.palettes.as_ref().unwrap(),
             ], 
             "Ray tracing"
         ));
@@ -96,6 +147,8 @@ impl Engine for RayTracer {
                     &taa.config_buffer,
                     color_buffer,
                     &taa.velocity_buffer,
+                    self.chunks_3d_texture.as_ref().unwrap(),
+                    self.palettes.as_ref().unwrap(),
                 ], 
                 renderer.size(),
             );
@@ -178,8 +231,6 @@ impl Engine for RayTracer {
                 self.tmp_transform.rotation *=
                     glm::quat_angle_axis(self.camera_config.target_x - tx, &local_x) *
                     glm::quat_angle_axis(self.camera_config.target_y - ty, &glm::Vec3::y());
-
-                println!("{:?}", self.tmp_transform.rotation);
             },
             WindowEvent::MouseWheel { delta: MouseScrollDelta::LineDelta(_, delta), .. } => {
                 self.tmp_transform.translation.z += delta * 0.01;

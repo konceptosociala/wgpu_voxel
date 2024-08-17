@@ -62,13 +62,18 @@ impl<T: Pod> Buffer<T> {
     /// # Errors
     ///
     /// Returns `RenderError::BufferOverflow` if the data length exceeds the buffer capacity.
-    pub fn fill_exact(&self, renderer: &Renderer, data: &[T]) -> Result<(), RenderError> {
+    pub fn fill_exact(
+        &self, 
+        renderer: &Renderer, 
+        offset: u64,
+        data: &[T],
+    ) -> Result<(), RenderError> {
         if data.len() > self.capacity {
             return Err(RenderError::BufferOverflow(data.len()));
         }
 
         if !data.is_empty() {
-            renderer.queue.write_buffer(&self.inner, 0, bytemuck::cast_slice(data));
+            renderer.queue.write_buffer(&self.inner, offset * size_of::<T>() as u64, bytemuck::cast_slice(data));
         }
 
         Ok(())
@@ -81,13 +86,18 @@ impl<T: Pod> Buffer<T> {
     /// * `device` - A reference to the wgpu device.
     /// * `queue` - A reference to the wgpu queue.
     /// * `data` - A slice of data to be written to the buffer.
-    pub fn fill(&mut self, renderer: &Renderer, data: &[T]) {
+    pub fn fill(
+        &mut self, 
+        renderer: &Renderer, 
+        offset: u64,
+        data: &[T],
+    ) {
         let bytes_to_write = size_of_val(data);
         if bytes_to_write > self.capacity * size_of::<T>() {
             self.resize(renderer, data.len());
         }
 
-        self.fill_exact(renderer, data).unwrap();
+        self.fill_exact(renderer, offset, data).unwrap();
     }
 
     pub fn resize(&mut self, renderer: &Renderer, capacity: usize) {

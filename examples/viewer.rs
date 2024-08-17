@@ -1,18 +1,24 @@
 use std::path::PathBuf;
 use clap::Parser;
+use wgpu::include_wgsl;
 use wgpu_voxel::{
     engine::Engine,
     event::{MouseScrollDelta, WindowEvent},
     glm,
     renderer::{
-        error::RenderError, pbr::{
-            camera::{Camera, CameraType},
+        error::RenderError, 
+        hal::{
+            buffer::{Buffer, BufferResource}, 
+            pipeline::Pipeline
+        }, 
+        pbr::{
+            camera::{Camera, CameraType, CameraUniform},
             transform::Transform
-        },
+        }, 
         voxel::{
             chunk::Chunk,
             model::VoxelModel
-        },
+        }, 
         Drawable, Renderer
     },
     Game, PhysicalSize, WindowBuilder, World
@@ -28,13 +34,33 @@ struct CameraConfiguration {
 }
 
 /// Engine implementation for viewing voxel models.
+#[derive(Default)]
 struct VoxelViewer {
+    camera_buffer: Option<BufferResource<CameraUniform>>,
+    pipeline: Option<Pipeline>,
     camera_config: CameraConfiguration,
     model_path: PathBuf,
 }
 
 impl Engine for VoxelViewer {
     fn init(&mut self, world: &mut World, renderer: &mut Renderer) {
+        self.camera_buffer = Some(BufferResource::new(
+            renderer,
+            Buffer::new(renderer, 1, wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST),
+            wgpu::ShaderStages::VERTEX,
+            wgpu::BufferBindingType::Uniform,
+        ));
+
+        self.pipeline = Some(Pipeline::new_render(
+            renderer, 
+            include_wgsl!("../src/renderer/shaders/main_shader.wgsl"),
+            &[
+                self.camera_buffer.as_ref().unwrap()
+            ],
+            "Viewer",
+            true,
+        ));
+
         let models = VoxelModel::load_vox(&self.model_path).unwrap_or_else(|e| {
             panic!("Cannot load model `{}: {}", &self.model_path.to_str().unwrap(), e);
         });
@@ -110,12 +136,24 @@ impl Engine for VoxelViewer {
         {
             let mut render_pass = ctx.render_pass(&canvas, renderer.depth_texture());
 
-            for (_, (camera, transform)) in &mut world.query::<(&mut Camera, &Transform)>() {
-                // renderer.update_camera(camera, transform);
+            for (_, (camera, transform)) in &mut world.query::<(&Camera, &Transform)>() {
+                self.camera_buffer
+                    .as_ref()
+                    .unwrap()
+                    .buffer
+                    .fill_exact(renderer, 0, &[CameraUniform::new(camera, transform)]).unwrap();
             }
 
-            for (_, (chunk, transform)) in &mut world.query::<(&Chunk, &Transform)>() {
-                // render_pass.draw(chunk, transform, &PipelineKey::MainPipeline, renderer);
+            for (_, (chunk, transform)) in &mut world.query::<(&Chunk, &mut Transform)>() {
+                render_pass.draw(
+                    renderer, 
+                    Some(chunk),
+                    Some(transform), 
+                    self.pipeline.as_ref().unwrap(),
+                    &[
+                        self.camera_buffer.as_ref().unwrap()
+                    ],
+                );
             }
         }
 
@@ -148,6 +186,7 @@ fn main() -> anyhow::Result<()> {
             ..Default::default()
         },
         model_path: args.path,
+        ..Default::default()
     });
     game.run()?;
 

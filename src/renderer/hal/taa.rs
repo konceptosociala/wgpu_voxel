@@ -41,10 +41,10 @@ impl Taa {
             render_texture: Texture::new(renderer, TextureDescriptor {
                 width: renderer.size().width,
                 height: renderer.size().height,
-                filter: TextureFilter::Linear,
-                dimension: TextureDimension::D2,
-                usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::COPY_SRC,
-                format: TextureFormat::Bgra8UnormSrgb,
+                filter: wgpu::FilterMode::Linear,
+                dimension: wgpu::TextureDimension::D2,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                format: wgpu::TextureFormat::Bgra8UnormSrgb,
                 depth: None,
                 label: "TAA Color",
             }),
@@ -53,10 +53,10 @@ impl Taa {
                 Texture::new(renderer, TextureDescriptor {
                     width: renderer.size().width,
                     height: renderer.size().height,
-                    filter: TextureFilter::Linear,
-                    dimension: TextureDimension::D2,
-                    usage: TextureUsage::TEXTURE_BINDING | TextureUsage::COPY_DST,
-                    format: TextureFormat::Bgra8UnormSrgb,
+                    filter: wgpu::FilterMode::Linear,
+                    dimension: wgpu::TextureDimension::D2,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
                     depth: None,
                     label: "TAA History",
                 }),
@@ -83,7 +83,7 @@ impl Taa {
     }
 
     pub fn update(&mut self, renderer: &Renderer) {
-        self.config_buffer.buffer.fill_exact(renderer, &[TaaConfig::new(renderer)])
+        self.config_buffer.buffer.fill_exact(renderer, 0, &[TaaConfig::new(renderer)])
             .expect("Cannot fill TAA buffer");
 
         let render_descr = *self.render_texture.description();

@@ -102,4 +102,5 @@ fn fs_main(
     let modulation_factor = 0.9;
 
     return mix(current_color, history_color, modulation_factor);
+    // return current_color;
 }

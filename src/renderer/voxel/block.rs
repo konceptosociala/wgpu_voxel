@@ -6,6 +6,7 @@ use super::chunk::Chunk;
 ///
 /// This struct can be used to define properties for blocks in a [`Chunk`],
 /// where each block can be active or inactive (visible or invisible), and has a color associated with it.
+#[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
     /// Indicates whether the block is active or not.

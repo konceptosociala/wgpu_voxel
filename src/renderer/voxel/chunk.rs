@@ -2,21 +2,47 @@ use std::sync::Arc;
 use hecs::Bundle;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use nalgebra_glm as glm;
 use crate::renderer::{
-    hal::buffer::BufferId,
+    hal::buffer::{Buffer, BufferId},
     pbr::{
         mesh::Mesh,
         transform::Transform,
         Color,
     },
     voxel::block::Block,
-    Drawable, Renderer
+    Drawable, Renderer, Texture
 };
 
 /// Error returned when block coordinates are invalid within a chunk.
 #[derive(Debug, Error)]
 #[error("Invalid block coords ({0}, {1}, {2}) in chunk")]
 pub struct InvalidBlockCoords(pub usize, pub usize, pub usize);
+
+#[derive(Debug, Error)]
+pub enum LoadChunkError {
+    #[error("Invalid texture dimension: expected `{expected:?}`, found `{found:?}`")]
+    InvalidTextureDimension {
+        expected: wgpu::TextureDimension,
+        found: wgpu::TextureDimension,
+    },
+    #[error(
+        "Invalid texture size: expected `{}x{}`, found `{}x{}`", 
+        expected.width, expected.height, 
+        found.width, found.height,
+    )]
+    InvalidTextureSize {
+        expected: wgpu::Extent3d,
+        found: wgpu::Extent3d,
+    },
+    #[error("Invalid chunks index `{found}` for maximum chunks number `{max}`")]
+    InvalidChunksIndex {
+        max: u64,
+        found: u64,
+    },
+    #[error("Invalid texture depth: `{0}` is not a multiple of `{}`", Chunk::CHUNK_SIZE)]
+    InvalidTextureDepth(u32),
+}
 
 /// Represents a 3D chunk of blocks in a voxel-based world.
 #[derive(Debug, Serialize, Deserialize)]
@@ -109,6 +135,101 @@ impl Chunk {
         self.blocks[x][y][z] = block;
 
         Ok(())
+    }
+
+    // FIXME: throws "Copy of (131072 * chunk_index)..(131072 * (chunk_index + 1)) 
+    // would end up overrunning the bounds of the Source buffer of size 131072", 
+    // if `chunk_index` > 0
+    pub fn write_to_texture(
+        &self, 
+        renderer: &Renderer, 
+        chunks_texture: &Texture, 
+        palettes_buffer: &Buffer<glm::Vec4>,
+        chunk_index: u64,
+    ) -> Result<(), LoadChunkError> {
+        let descr = chunks_texture.description();
+
+        if descr.dimension != wgpu::TextureDimension::D3 {
+            return Err(LoadChunkError::InvalidTextureDimension {
+                expected: wgpu::TextureDimension::D3,
+                found: descr.dimension,
+            })
+        }
+
+        if descr.depth.unwrap_or(1) % Chunk::CHUNK_SIZE as u32 != 0 {
+            return Err(LoadChunkError::InvalidTextureDepth(descr.depth.unwrap_or(1)));
+        }
+
+        if descr.width != Chunk::CHUNK_SIZE as u32 || descr.height != Chunk::CHUNK_SIZE as u32 {
+            return Err(LoadChunkError::InvalidTextureSize { 
+                expected: wgpu::Extent3d {
+                    width: Chunk::CHUNK_SIZE as u32,
+                    height: Chunk::CHUNK_SIZE as u32,
+                    ..Default::default()
+                }, 
+                found: chunks_texture.texture().size(),
+            });
+        }
+
+        let max_chunks = descr.depth.unwrap_or(1) as u64 / Chunk::CHUNK_SIZE as u64;
+        if chunk_index >= max_chunks {
+            return Err(LoadChunkError::InvalidChunksIndex {
+                max: max_chunks,
+                found: chunk_index,
+            });
+        }
+
+
+        renderer.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: chunks_texture.texture(),
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &self.data_to_u8_slice(),
+            wgpu::ImageDataLayout {
+                offset: chunk_index * Chunk::CHUNK_SIZE as u64 * Chunk::CHUNK_SIZE as u64 * Chunk::CHUNK_SIZE as u64 * 4,
+                bytes_per_row: Some(4 * descr.width),
+                rows_per_image: Some(descr.height),
+            },
+            wgpu::Extent3d {
+                width: Chunk::CHUNK_SIZE as u32,
+                height: Chunk::CHUNK_SIZE as u32,
+                depth_or_array_layers: Chunk::CHUNK_SIZE as u32,
+            },
+        );
+
+        // TODO: Chunks 3d texture and palettes buffer to single type
+
+        palettes_buffer.fill_exact(
+            renderer, 
+            chunk_index,
+            &self.palette
+                .iter()
+                .map(|c| glm::vec4(c.r, c.g, c.b, 1.0))
+                .collect::<Vec<_>>()
+        ).unwrap();
+
+        Ok(())
+    }
+
+    fn data_to_u8_slice(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.blocks.len() * 4);
+        
+        for z in 0..Self::CHUNK_SIZE {
+            for y in 0..Self::CHUNK_SIZE {
+                for x in 0..Self::CHUNK_SIZE {
+                    let block = self.get_block(x, y, z).unwrap();
+                    bytes.push(block.is_active() as u8);
+                    bytes.push(block.color());
+                    bytes.push(0);
+                    bytes.push(0);
+                }
+            }
+        }
+        
+        bytes
     }
 
     /// Generates a `Mesh` for the chunk based on its blocks.

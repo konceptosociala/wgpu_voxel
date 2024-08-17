@@ -8,18 +8,16 @@ use super::pipeline::{ShaderBinding, ShaderResource};
 
 pub use wgpu::TextureSampleType;
 
-structstruck::strike! {
-    #[derive(Debug, Clone, Copy)]
-    pub struct TextureDescriptor {
-        pub width: u32,
-        pub height: u32,
-        pub filter: pub type TextureFilter = wgpu::FilterMode,
-        pub dimension: pub type TextureDimension = wgpu::TextureDimension,
-        pub usage: pub type TextureUsage = wgpu::TextureUsages,
-        pub format: pub type TextureFormat = wgpu::TextureFormat,
-        pub depth: Option<u32>,
-        pub label: &'static str,
-    }
+#[derive(Debug, Clone, Copy)]
+pub struct TextureDescriptor {
+    pub width: u32,
+    pub height: u32,
+    pub depth: Option<u32>,
+    pub filter: wgpu::FilterMode,
+    pub dimension: wgpu::TextureDimension,
+    pub usage: wgpu::TextureUsages,
+    pub format: wgpu::TextureFormat,
+    pub label: &'static str,
 }
 
 bitflags! {
@@ -70,7 +68,7 @@ impl TextureResource {
                         TextureResourceUsage::TEXTURE => {
                             Some(wgpu::BindGroupLayoutEntry {
                                 binding: i as u32,
-                                visibility: wgpu::ShaderStages::FRAGMENT,
+                                visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE,
                                 ty: wgpu::BindingType::Texture {
                                     sample_type: sample_type.unwrap_or_else(|| {
                                         panic!("Must specify sample type for texture with TextureResourceUsage::TEXTURE");
@@ -169,7 +167,7 @@ pub struct Texture {
 
 impl RenderSurface for Texture {
     fn view(&self) -> &wgpu::TextureView {
-        if !self.description.usage.contains(TextureUsage::RENDER_ATTACHMENT) {
+        if !self.description.usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
             panic!("Texture, used as render surfce, must have RENDER_ATTACHMENT usage");
         }
 

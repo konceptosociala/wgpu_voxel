@@ -106,9 +106,9 @@ impl VoxelModel {
     /// A vector of `ChunkBundle` instances, each containing a chunk and its transform.
     pub fn into_chunks(self) -> Vec<ChunkBundle> {
         // Calculate the number of chunks needed in each dimension.
-        let chunks_x_size = self.size.x / Chunk::CHUNK_SIZE + 1;
-        let chunks_y_size = self.size.y / Chunk::CHUNK_SIZE + 1;
-        let chunks_z_size = self.size.z / Chunk::CHUNK_SIZE + 1;
+        let chunks_x_size = (self.size.x - 1) / Chunk::CHUNK_SIZE + 1;
+        let chunks_y_size = (self.size.y - 1) / Chunk::CHUNK_SIZE + 1;
+        let chunks_z_size = (self.size.z - 1) / Chunk::CHUNK_SIZE + 1;
 
         // Initialize chunks with calculated capacity.
         let mut chunks = HashMap::<(u8, u8, u8), Chunk>::with_capacity(

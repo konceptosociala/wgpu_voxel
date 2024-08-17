@@ -19,7 +19,6 @@ pub mod hal;
 pub mod rt;
 
 /// Represents a renderer that handles drawing to a window using wgpu.
-#[allow(dead_code)]
 pub struct Renderer {
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
@@ -71,10 +70,10 @@ impl Renderer {
             TextureDescriptor {
                 width: renderer.config.width,
                 height: renderer.config.height,
-                filter: TextureFilter::Linear,
-                dimension: TextureDimension::D2,
-                format: TextureFormat::Depth32Float,
-                usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::TEXTURE_BINDING,
+                filter: wgpu::FilterMode::Linear,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Depth32Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
                 depth: None,
                 label: "Depth data",
             },
@@ -168,10 +167,10 @@ impl Renderer {
         if self.vertex_buffers
             .get(id.0)
             .ok_or(InvalidBufferId(id))?
-            .fill_exact(self, data).is_err() 
+            .fill_exact(self, 0, data).is_err() 
             {
                 let mut buffer = self.vertex_buffers.get(id.0).unwrap().clone();
-                buffer.fill(self, data);
+                buffer.fill(self, 0, data);
                 *self.vertex_buffers.get_mut(id.0).unwrap() = buffer;
             }
 
@@ -200,6 +199,7 @@ impl Renderer {
                 required_features: wgpu::Features::PUSH_CONSTANTS,
                 required_limits: wgpu::Limits {
                     max_push_constant_size: 128,
+                    max_bind_groups: 5,
                     ..Default::default()
                 },
                 label: Some("Logical device"),

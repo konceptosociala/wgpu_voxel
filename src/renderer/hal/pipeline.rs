@@ -1,6 +1,21 @@
 use crate::renderer::{pbr::mesh::Vertex, Renderer};
 
-pub use wgpu::include_wgsl;
+#[macro_export]
+macro_rules! include_wgsl {
+    ($token:tt) => {
+        {
+            #[::include_wgsl_oil::include_wgsl_oil($token)]
+            mod shader {}
+
+            ::wgpu::ShaderModuleDescriptor {
+                label: Some($token),
+                source: ::wgpu::ShaderSource::Wgsl(shader::SOURCE.into()),
+            }
+        }
+    };
+}
+
+pub use include_wgsl;
 
 pub type Shader = wgpu::ShaderModuleDescriptor<'static>;
 
