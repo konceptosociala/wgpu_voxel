@@ -1,1 +1,7 @@
 /target
+
+/tracengine/target
+/tracengine/Cargo.lock
+
+/voxelcraft/target
+/voxelcraft/Cargo.lock
