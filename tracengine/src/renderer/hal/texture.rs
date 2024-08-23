@@ -5,9 +5,6 @@ use game_loop::winit::dpi::PhysicalSize;
 use crate::renderer::{RenderSurface, Renderer};
 use crate::renderer::types::*;
 
-use super::pipeline::{ShaderBinding, ShaderResource};
-
-
 #[derive(Debug, Clone, Copy)]
 pub struct TextureDescriptor {
     pub width: u32,
@@ -29,131 +26,9 @@ bitflags! {
     }
 }
 
-#[readonly::make]
-pub struct TextureResource {
-    pub texture: Texture,
-    pub resource: ShaderResource,
-    #[readonly]
+pub struct TextureResourceDescriptor {
     pub usage: TextureResourceUsage,
-    #[readonly]
     pub sample_type: Option<TextureSampleType>,
-}
-
-impl ShaderBinding for TextureResource {
-    fn get_resource(&self) -> &ShaderResource {
-        &self.resource
-    }
-}
-
-impl TextureResource {
-    pub fn new(
-        renderer: &Renderer,
-        texture: Texture,
-        usage: TextureResourceUsage,
-        sample_type: Option<TextureSampleType>,
-    ) -> TextureResource {
-        let view_dimension = match texture.description.dimension {
-            wgpu::TextureDimension::D1 => wgpu::TextureViewDimension::D1,
-            wgpu::TextureDimension::D2 => wgpu::TextureViewDimension::D2,
-            wgpu::TextureDimension::D3 => wgpu::TextureViewDimension::D3,
-        };
-
-        let bind_group_layout = renderer.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some(format!("{} texture bind group layout", texture.description.label).as_str()),
-            entries: &usage
-                .iter()
-                .enumerate()
-                .filter_map(|(i, usage)| {
-                    match usage {
-                        TextureResourceUsage::TEXTURE => {
-                            Some(wgpu::BindGroupLayoutEntry {
-                                binding: i as u32,
-                                visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::Texture {
-                                    sample_type: sample_type.unwrap_or_else(|| {
-                                        panic!("Must specify sample type for texture with TextureResourceUsage::TEXTURE");
-                                    }),
-                                    view_dimension,
-                                    multisampled: false,
-                                },
-                                count: None,
-                            })
-                        },
-                        TextureResourceUsage::SAMPLER => {
-                            Some(wgpu::BindGroupLayoutEntry {
-                                binding: i as u32,
-                                visibility: wgpu::ShaderStages::FRAGMENT,
-                                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                                count: None,
-                            })
-                        },
-                        TextureResourceUsage::STORAGE => {
-                            Some(wgpu::BindGroupLayoutEntry {
-                                binding: i as u32,
-                                visibility: wgpu::ShaderStages::COMPUTE | wgpu::ShaderStages::FRAGMENT,
-                                ty: wgpu::BindingType::StorageTexture {
-                                    access: wgpu::StorageTextureAccess::WriteOnly,
-                                    format: texture.description.format,
-                                    view_dimension,
-                                },
-                                count: None,
-                            })
-                        },
-                        _ => None,
-                    }
-                })
-                .collect::<Vec<_>>()
-        });
-
-        let bind_group = renderer.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(format!("{} texture bind group", texture.description.label).as_str()),
-            layout: &bind_group_layout,
-            entries: &usage
-                .iter()
-                .enumerate()
-                .filter_map(|(i, usage)| {
-                    match usage {
-                        TextureResourceUsage::STORAGE | TextureResourceUsage::TEXTURE => {
-                            Some(wgpu::BindGroupEntry {
-                                binding: i as u32,
-                                resource: wgpu::BindingResource::TextureView(texture.view())
-                            },)
-                        },
-                        TextureResourceUsage::SAMPLER => {
-                            Some(wgpu::BindGroupEntry {
-                                binding: i as u32,
-                                resource: wgpu::BindingResource::Sampler(texture.sampler()),
-                            })
-                        },
-                        _ => None,
-                    }
-                })
-                .collect::<Vec<_>>(),
-        });
-
-        TextureResource {
-            texture,
-            resource: ShaderResource {
-                bind_group,
-                bind_group_layout,
-            },
-            usage,
-            sample_type,
-        }
-    }
-
-    pub fn resize(&mut self, renderer: &Renderer, size: PhysicalSize<u32>) {
-        let mut descr = self.texture.description;
-        descr.width = size.width;
-        descr.height = size.height;
-
-        *self = TextureResource::new(
-            renderer,
-            Texture::new(renderer, descr), 
-            self.usage, 
-            self.sample_type,
-        )
-    }
 }
 
 /// A structure representing a depth texture, including its view and sampler.

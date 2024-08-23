@@ -4,20 +4,40 @@
 
 // ========= Uniforms =========
 
+// TAA resource
 @group(0) @binding(0)
-var<uniform> taa_config: Utils::TaaConfig;
-
-@group(1) @binding(0)
 var history_texture: texture_2d<f32>;
 
-@group(1) @binding(1)
+@group(0) @binding(1)
 var history_sampler: sampler;
 
-@group(2) @binding(0)
+@group(0) @binding(2)
 var<storage, read_write> velocity_buffer: array<vec4<f32>>;
 
-@group(3) @binding(0)
+@group(0) @binding(3)
+var<uniform> taa_config: Utils::TaaConfig;
+
+// Tracer resource
+@group(1) @binding(0)
+var<uniform> camera: Utils::Camera;
+
+@group(1) @binding(1)
 var<storage, read_write> color_buffer: array<vec4<f32>>;
+
+@group(1) @binding(2)
+var<storage, read_write> normal_buffer: array<vec4<f32>>;
+
+@group(1) @binding(3)
+var<storage, read_write> depth_buffer: array<f32>;
+
+@group(1) @binding(4)
+var<storage, read> palettes_buffer: array<vec4<f32>>;
+
+@group(1) @binding(5)
+var chunks: texture_3d<u32>;
+
+@group(1) @binding(6)
+var chunks_sampler: sampler;
 
 // ========= Render =========
 
@@ -98,5 +118,5 @@ fn fs_main(
     let modulation_factor = 0.9;
 
     return mix(current_color, history_color, modulation_factor);
-    // return current_color;
+    // return vec4<f32>(velocity.x, velocity.y, 0.0, 1.0);
 }

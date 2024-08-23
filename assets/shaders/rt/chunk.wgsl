@@ -6,14 +6,14 @@
 #import constants.wgsl as Constants
 #import utils.wgsl as Utils
 
-@group(4) @binding(0)
+@group(1) @binding(4)
+var<storage, read> palettes_buffer: array<vec4<f32>>;
+
+@group(1) @binding(5)
 var chunks: texture_3d<u32>;
 
-@group(4) @binding(1)
+@group(1) @binding(6)
 var chunks_sampler: sampler;
-
-@group(5) @binding(0)
-var<storage, read> palettes_buffer: array<vec4<f32>>;
 
 fn hit(
     ray: Ray::Ray, 
@@ -25,7 +25,7 @@ fn hit(
 
     var box = Box::Box(Constants::CHUNK_MIN, Constants::CHUNK_MAX);
 
-    if !Box::hit(&box, ray, box_t_min, box_t_max,&grid_record) {
+    if !Box::hit(&box, ray, box_t_min, box_t_max, &grid_record) {
         return false;
     }
 
@@ -43,6 +43,34 @@ fn hit(
 
     var axis = 0;
     loop {
+        voxel = Voxel::parse(textureLoad(chunks, vec3<i32>(pos), 0));
+
+        if voxel.is_active {
+            (*record).t = grid_record.t + max((t_max[axis] - t_delta[axis]) / voxels_per_unit[axis], 0.0);
+            (*record).p = Ray::at(ray, (*record).t);
+            
+            switch axis {
+                case 0: {
+                    (*record).normal = vec3<f32>(1.0, 0.0, 0.0);
+                }
+                case 1: {
+                    (*record).normal = vec3<f32>(0.0, 1.0, 0.0);
+                }
+                case 2: {
+                    (*record).normal = vec3<f32>(0.0, 0.0, 1.0);
+                }
+                default: {}
+            }
+
+            if dot(ray.direction, (*record).normal) >= 0.0 {
+                (*record).normal = -(*record).normal;
+            }
+
+            (*record).voxel_color = palettes_buffer[voxel.color_id];
+
+            return true;
+        } 
+
         if t_max.x < t_max.y { 
             if t_max.x < t_max.z {
                 pos.x += step.x;
@@ -71,36 +99,6 @@ fn hit(
                 axis = 2;
                 t_max.z += t_delta.z; 
             }
-        } 
-
-        voxel = Voxel::parse(textureLoad(chunks, vec3<i32>(pos), 0));
-
-        if voxel.is_active {
-            (*record).t = grid_record.t + (t_max[axis] - t_delta[axis]) / voxels_per_unit[axis];
-            (*record).p = Ray::at(ray, (*record).t);
-
-            let value = f32() * 2.0 - 1.0;
-            
-            switch axis {
-                case 0: {
-                    (*record).normal = vec3<f32>(1.0, 0.0, 0.0);
-                }
-                case 1: {
-                    (*record).normal = vec3<f32>(0.0, 1.0, 0.0);
-                }
-                case 2: {
-                    (*record).normal = vec3<f32>(0.0, 0.0, 1.0);
-                }
-                default: {}
-            }
-
-            if dot(ray.direction, (*record).normal) >= 0.0 {
-                (*record).normal = -(*record).normal;
-            }
-
-            (*record).voxel_color = palettes_buffer[voxel.color_id];
-
-            return true;
         } 
     }
 

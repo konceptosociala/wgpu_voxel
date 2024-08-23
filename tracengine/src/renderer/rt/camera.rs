@@ -3,6 +3,13 @@ use nalgebra_glm as glm;
 
 use crate::renderer::{hal::Padding, InstanceData};
 
+pub struct RtCameraDescriptor {
+    pub image_width: u32, 
+    pub image_height: u32, 
+    pub scan_depth: u32, 
+    pub jitter: f32,
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct RtCamera {
     pub image_width: u32,
@@ -15,13 +22,8 @@ pub struct RtCamera {
 }
 
 impl RtCamera {
-    pub fn new(
-        image_width: u32, 
-        image_height: u32, 
-        scan_depth: u32, 
-        jitter: f32,
-    ) -> RtCamera {
-        let aspect = image_width as f32 / image_height as f32;
+    pub fn new(descriptor: &RtCameraDescriptor) -> RtCamera {
+        let aspect = descriptor.image_width as f32 / descriptor.image_height as f32;
 
         let focal_length = 1.0;
         let viewport_height = 2.0;
@@ -31,21 +33,21 @@ impl RtCamera {
         let viewport_u = glm::vec3(viewport_width, 0.0, 0.0);
         let viewport_v = glm::vec3(0.0, -viewport_height, 0.0);
 
-        let pixel_delta_u = viewport_u / image_width as f32;
-        let pixel_delta_v = viewport_v / image_height as f32;
+        let pixel_delta_u = viewport_u / descriptor.image_width as f32;
+        let pixel_delta_v = viewport_v / descriptor.image_height as f32;
 
-        let jitter = jitter / image_height as f32;
+        let jitter = descriptor.jitter / descriptor.image_height as f32;
         let viewport_upper_left = center - glm::vec3(0.0, 0.0, focal_length) - viewport_u/2.0 - viewport_v/2.0;
         let first_pixel = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v) + glm::vec3(jitter, jitter, 0.);
 
         RtCamera {
-            image_height,
-            image_width,
+            image_height: descriptor.image_height,
+            image_width: descriptor.image_width,
             center,
             first_pixel,
             pixel_delta_u,
             pixel_delta_v,
-            scan_depth,
+            scan_depth: descriptor.scan_depth,
         }
     }
 }

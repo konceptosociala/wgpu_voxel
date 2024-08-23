@@ -1,16 +1,20 @@
 use tracengine::renderer::{
     hal::{
-        buffer::{Buffer, BufferResource}, 
-        pipeline::{include_wgsl, Pipeline}, 
+        buffer::{Buffer, BufferResourceDescriptor},
+        pipeline::{include_wgsl, Pipeline, ShaderResource}, 
         taa::Taa, 
-        texture::{Texture, TextureDescriptor, TextureResource, TextureResourceUsage}
-    }, rt::{
-        camera::{RtCamera, RtCameraUniform},
+        texture::{Texture, TextureDescriptor, TextureResourceDescriptor, TextureResourceUsage}
+    }, 
+    rt::{
+        camera::{RtCamera, RtCameraDescriptor, RtCameraUniform},
         transform::RtTransform,
-    }, types::*, voxel::{
+    }, 
+    types::*,
+    voxel::{
         chunk::Chunk, 
         model::VoxelModel,
-    }, InstanceData, Renderer
+    }, 
+    InstanceData, Renderer
 };
 use tracengine::glm;
 
@@ -25,12 +29,20 @@ const fn chunks_count() -> u32 {
 
 pub struct Tracer {
     pub taa: Taa,
-    pub camera_buffer: BufferResource<RtCameraUniform>,
-    pub color_buffer: BufferResource<glm::Vec4>,
-    pub chunks_3d_texture: TextureResource,
-    pub palettes: BufferResource<glm::Vec4>,
+
+    pub camera_buffer: Buffer<RtCameraUniform>,
+
+    pub color_buffer: Buffer<glm::Vec4>,
+    pub depth_buffer: Buffer<f32>,
+    pub normal_buffer: Buffer<glm::Vec4>,
+
+    pub palettes_buffer: Buffer<glm::Vec4>,
+    pub chunks_3d_texture: Texture,
+    pub shader_resource: ShaderResource,
+
     pub rt_pipeline: Pipeline,
     pub taa_pipeline: Pipeline,
+
     pub chunk: Chunk,
     pub camera: RtCamera,
     pub tmp_transform: RtTransform,
@@ -44,12 +56,13 @@ impl Tracer {
 
         // Init color buffer
         let viewport_size = (renderer.size().width * renderer.size().height) as usize;
-        let color_buffer = BufferResource::new(
-            renderer,
-            Buffer::new(renderer, viewport_size, BufferUsages::STORAGE),
-            ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
-            BufferBindingType::Storage { read_only: false },
-        );
+        let color_buffer = Buffer::new(renderer, viewport_size, BufferUsages::STORAGE);
+
+        // Init depth buffer
+        let depth_buffer = Buffer::new(renderer, viewport_size, BufferUsages::STORAGE);
+
+        // Init normal buffer
+        let normal_buffer = Buffer::new(renderer, viewport_size, BufferUsages::STORAGE);
 
         // Init camera
         let camera_config = CameraConfiguration {
@@ -57,20 +70,15 @@ impl Tracer {
             ..Default::default()
         };
 
-        let mut camera = RtCamera::new(
-            renderer.size().width, 
-            renderer.size().height, 
-            10,
-            taa.current_jitter(),
-        );
+        let mut camera = RtCamera::new(&RtCameraDescriptor {
+            image_width: renderer.size().width,
+            image_height: renderer.size().height,
+            scan_depth: 2,
+            jitter: taa.current_jitter,
+        });
 
-        let camera_buffer = BufferResource::new(
-            renderer,
-            Buffer::new(renderer, 1, BufferUsages::UNIFORM | BufferUsages::COPY_DST),
-            ShaderStages::COMPUTE,
-            BufferBindingType::Uniform,
-        );
-        camera_buffer.buffer.fill_exact(renderer, 0, &[camera.uniform_data()]).unwrap();
+        let camera_buffer = Buffer::new(renderer, 1, BufferUsages::UNIFORM | BufferUsages::COPY_DST);
+        camera_buffer.fill_exact(renderer, 0, &[camera.uniform_data()]).unwrap();
 
         // Init chunks
         let chunk = VoxelModel::load_vox("../assets/vox/model2.vox")
@@ -80,74 +88,82 @@ impl Tracer {
             .swap_remove(0)
             .chunk;
 
-        let chunks_3d_texture = TextureResource::new(
-            renderer,
-            Texture::new(renderer, TextureDescriptor {
-                width: Chunk::CHUNK_SIZE as u32,
-                height: Chunk::CHUNK_SIZE as u32,
-                depth: Some(Chunk::CHUNK_SIZE as u32 * chunks_count()),
-                filter: FilterMode::Nearest,
-                dimension: TextureDimension::D3,
-                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-                format: TextureFormat::Rgba8Uint,
-                label: "Chunks",
-            }),
-            TextureResourceUsage::TEXTURE | TextureResourceUsage::SAMPLER,
-            Some(TextureSampleType::Uint),
-        );
+        let chunks_3d_texture = Texture::new(renderer, TextureDescriptor {
+            width: Chunk::CHUNK_SIZE as u32,
+            height: Chunk::CHUNK_SIZE as u32,
+            depth: Some(Chunk::CHUNK_SIZE as u32 * chunks_count()),
+            filter: FilterMode::Nearest,
+            dimension: TextureDimension::D3,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            format: TextureFormat::Rgba8Uint,
+            label: "Chunks",
+        });
 
-        let palettes = BufferResource::new(
-            renderer,
-            Buffer::new(renderer, 256 * chunks_count() as usize, BufferUsages::STORAGE),
-            ShaderStages::COMPUTE,
-            BufferBindingType::Storage { read_only: true },
-        );
-
-        chunk.write_to_texture(
-            renderer, 
-            &chunks_3d_texture.texture,
-            &palettes.buffer,
+        let palettes_buffer = Buffer::new(renderer, 256 * chunks_count() as usize, BufferUsages::STORAGE);
+        
+        chunk.write_to_texture(renderer, 
+            &chunks_3d_texture,
+            &palettes_buffer,
             0,
         ).unwrap();
+
+        // TODO: local transformations
+        // Init transform
+        let tmp_transform = RtTransform::default();
+
+        // Init shader resource
+        let shader_resource = ShaderResource::builder()
+            .add_buffer(&camera_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE,
+                buffer_type: BufferBindingType::Uniform,
+            })
+            .add_buffer(&color_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+                buffer_type: BufferBindingType::Storage { read_only: false },
+            })
+            .add_buffer(&normal_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+                buffer_type: BufferBindingType::Storage { read_only: false },
+            })
+            .add_buffer(&depth_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+                buffer_type: BufferBindingType::Storage { read_only: false },
+            })
+            .add_buffer(&palettes_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE,
+                buffer_type: BufferBindingType::Storage { read_only: true },
+            })
+            .add_texture(&chunks_3d_texture, &TextureResourceDescriptor {
+                usage: TextureResourceUsage::TEXTURE | TextureResourceUsage::SAMPLER,
+                sample_type: Some(TextureSampleType::Uint),
+            })
+            .build(renderer);
 
         // Init pipelines
         let rt_pipeline = Pipeline::new_compute(
             renderer, 
             include_wgsl!("../../assets/shaders/rt_shader.wgsl"),
-            &[
-                &taa.config_buffer,
-                &camera_buffer,
-                &color_buffer,
-                &taa.velocity_buffer,
-                &chunks_3d_texture,
-                &palettes,
-            ], 
+            &[&taa.shader_resource, &shader_resource], 
             "Ray tracing"
         );
 
         let taa_pipeline = Pipeline::new_render(
             renderer,
             include_wgsl!("../../assets/shaders/taa_shader.wgsl"),
-            &[
-                &taa.config_buffer,
-                &taa.history_texture,
-                &taa.velocity_buffer,
-                &color_buffer,
-            ],
+            &[&taa.shader_resource, &shader_resource],
             "TAA",
             false,
-        );
-
-        // TODO: local transformations
-        // Init transform
-        let tmp_transform = RtTransform::default();
+        );  
 
         Tracer {
             taa,
             camera_buffer,
             color_buffer,
+            normal_buffer,
+            depth_buffer,
             chunks_3d_texture,
-            palettes,
+            palettes_buffer,
+            shader_resource,
             rt_pipeline,
             taa_pipeline,
             chunk,
@@ -155,5 +171,34 @@ impl Tracer {
             tmp_transform,
             camera_config,
         }
+    }
+
+    pub fn rebind_resources(&mut self, renderer: &mut Renderer) {
+        self.shader_resource = ShaderResource::builder()
+            .add_buffer(&self.camera_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE,
+                buffer_type: BufferBindingType::Uniform,
+            })
+            .add_buffer(&self.color_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+                buffer_type: BufferBindingType::Storage { read_only: false },
+            })
+            .add_buffer(&self.normal_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+                buffer_type: BufferBindingType::Storage { read_only: false },
+            })
+            .add_buffer(&self.depth_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+                buffer_type: BufferBindingType::Storage { read_only: false },
+            })
+            .add_buffer(&self.palettes_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE,
+                buffer_type: BufferBindingType::Storage { read_only: true },
+            })
+            .add_texture(&self.chunks_3d_texture, &TextureResourceDescriptor {
+                usage: TextureResourceUsage::TEXTURE | TextureResourceUsage::SAMPLER,
+                sample_type: Some(TextureSampleType::Uint),
+            })
+            .build(renderer);
     }
 }

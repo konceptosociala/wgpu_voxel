@@ -3,7 +3,7 @@ use bytemuck::Pod;
 use error::RenderError;
 use hal::{
     buffer::{Buffer, BufferId, InvalidBufferId}, 
-    pipeline::{Pipeline, ShaderBinding}, 
+    pipeline::{Pipeline, ShaderResource}, 
     texture::*
 };
 use game_loop::winit::{
@@ -187,9 +187,9 @@ impl Renderer {
             .ok_or(InvalidBufferId(id))?
             .fill_exact(self, 0, data).is_err() 
             {
-                let mut buffer = self.vertex_buffers.get(id.0).unwrap().clone();
+                let mut buffer = self.vertex_buffers.swap_remove(id.0);
                 buffer.fill(self, 0, data);
-                *self.vertex_buffers.get_mut(id.0).unwrap() = buffer;
+                self.vertex_buffers.insert(id.0, buffer);
             }
 
         Ok(())
@@ -217,7 +217,7 @@ impl Renderer {
                 required_features: wgpu::Features::PUSH_CONSTANTS,
                 required_limits: wgpu::Limits {
                     max_push_constant_size: 128,
-                    max_bind_groups: 6,
+                    max_bind_groups: 8,
                     ..Default::default()
                 },
                 label: Some("Logical device"),
@@ -358,7 +358,7 @@ impl<'a> ComputePass<'a> {
         &mut self,
         instance_data: Option<&mut dyn InstanceData<UniformData = T>>,
         pipeline: &'a Pipeline,
-        shader_bindings: &[&'a dyn ShaderBinding],
+        shader_resources: &[&'a ShaderResource],
         size: PhysicalSize<u32>,
     ) {
         if let Pipeline::Compute(p) = pipeline {
@@ -367,8 +367,8 @@ impl<'a> ComputePass<'a> {
             panic!("Cannot use render pipeline in compute() command");
         }
 
-        for (i, binding) in shader_bindings.iter().enumerate() {
-            self.pass.set_bind_group(i as u32, &binding.get_resource().bind_group, &[]);
+        for (i, binding) in shader_resources.iter().enumerate() {
+            self.pass.set_bind_group(i as u32, &binding.bind_group, &[]);
         }
 
         if let Some(instance_data) = instance_data {
@@ -394,7 +394,7 @@ impl<'a> RenderPass<'a> {
         drawable: Option<&dyn Drawable>,
         instance_data: Option<&mut dyn InstanceData<UniformData = T>>,
         pipeline: &'a Pipeline,
-        shader_bindings: &[&'a dyn ShaderBinding],
+        shader_resources: &[&'a ShaderResource],
     ) {
         if let Pipeline::Render(p) = pipeline {
             self.pass.set_pipeline(p);
@@ -402,8 +402,8 @@ impl<'a> RenderPass<'a> {
             panic!("Cannot use compute pipeline in draw() command");
         }
 
-        for (i, binding) in shader_bindings.iter().enumerate() {
-            self.pass.set_bind_group(i as u32, &binding.get_resource().bind_group, &[]);
+        for (i, binding) in shader_resources.iter().enumerate() {
+            self.pass.set_bind_group(i as u32, &binding.bind_group, &[]);
         }
 
         if let Some(instance_data) = instance_data {

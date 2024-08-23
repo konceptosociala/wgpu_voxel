@@ -3,7 +3,9 @@ use tracengine::{
     event::{MouseScrollDelta, WindowEvent}, 
     glm, 
     renderer::{
-        error::RenderError, rt::camera::RtCamera, InstanceData, Renderer
+        error::RenderError, 
+        rt::camera::{RtCamera, RtCameraDescriptor},
+        InstanceData, Renderer
     }, 
     World
 };
@@ -70,20 +72,37 @@ impl Engine for VoxelCraft {
 
         tracer.taa.update(renderer);
 
+        let mut rebind_resources = false;
+
         let viewport_size = renderer.size().width as usize * renderer.size().height as usize;
-        if *tracer.color_buffer.buffer.capacity() != viewport_size {
+        if *tracer.color_buffer.capacity() != viewport_size {
             tracer.color_buffer.resize(renderer, viewport_size);
+            rebind_resources = true;
+        }
+
+        if *tracer.normal_buffer.capacity() != viewport_size {
+            tracer.normal_buffer.resize(renderer, viewport_size);
+            rebind_resources = true;
+        }
+
+        if *tracer.depth_buffer.capacity() != viewport_size {
+            tracer.depth_buffer.resize(renderer, viewport_size);
+            rebind_resources = true;
         }
 
         if tracer.camera.image_width != renderer.size().width || tracer.camera.image_height != renderer.size().height {
-            tracer.camera = RtCamera::new(
-                renderer.size().width, 
-                renderer.size().height, 
-                2, 
-                tracer.taa.current_jitter(),
-            );
-            tracer.camera_buffer.buffer.fill_exact(renderer, 0, &[tracer.camera.uniform_data()]).unwrap();
-            println!("camera");
+            tracer.camera = RtCamera::new(&RtCameraDescriptor {
+                image_width: renderer.size().width,
+                image_height: renderer.size().height,
+                scan_depth: 2,
+                jitter: tracer.taa.current_jitter,
+            });
+            tracer.camera_buffer.fill_exact(renderer, 0, &[tracer.camera.uniform_data()]).unwrap();
+            rebind_resources = true;
+        }
+
+        if rebind_resources {
+            tracer.rebind_resources(renderer);
         }
 
         {
@@ -93,12 +112,8 @@ impl Engine for VoxelCraft {
                 Some(&mut tracer.tmp_transform),
                 &tracer.rt_pipeline, 
                 &[
-                    &tracer.taa.config_buffer,
-                    &tracer.camera_buffer,
-                    &tracer.color_buffer,
-                    &tracer.taa.velocity_buffer,
-                    &tracer.chunks_3d_texture,
-                    &tracer.palettes,
+                    &tracer.taa.shader_resource,
+                    &tracer.shader_resource,
                 ], 
                 renderer.size(),
             );
@@ -113,17 +128,15 @@ impl Engine for VoxelCraft {
                 None, 
                 &tracer.taa_pipeline, 
                 &[
-                    &tracer.taa.config_buffer,
-                    &tracer.taa.history_texture,
-                    &tracer.taa.velocity_buffer,
-                    &tracer.color_buffer,
+                    &tracer.taa.shader_resource,
+                    &tracer.shader_resource,
                 ],
             );
         }
 
         ctx.copy_texture(
             &tracer.taa.render_texture, 
-            &tracer.taa.history_texture.texture, 
+            &tracer.taa.history_texture, 
         );
 
         {
@@ -135,10 +148,8 @@ impl Engine for VoxelCraft {
                 None, 
                 &tracer.taa_pipeline, 
                 &[
-                    &tracer.taa.config_buffer,
-                    &tracer.taa.history_texture,
-                    &tracer.taa.velocity_buffer,
-                    &tracer.color_buffer,
+                    &tracer.taa.shader_resource,
+                    &tracer.shader_resource,
                 ],
             );
         }

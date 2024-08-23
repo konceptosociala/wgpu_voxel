@@ -4,7 +4,7 @@ use tracengine::{
     engine::Engine, event::{MouseScrollDelta, WindowEvent}, glm, include_wgsl, renderer::{
         error::RenderError, 
         hal::{
-            buffer::{Buffer, BufferResource}, 
+            buffer::Buffer, 
             pipeline::Pipeline
         }, 
         pbr::{
@@ -33,7 +33,7 @@ struct CameraConfiguration {
 /// Engine implementation for viewing voxel models.
 #[derive(Default)]
 struct VoxelViewer {
-    camera_buffer: Option<BufferResource<CameraUniform>>,
+    camera_buffer: Option<CameraUniform>,
     pipeline: Option<Pipeline>,
     camera_config: CameraConfiguration,
     model_path: PathBuf,
