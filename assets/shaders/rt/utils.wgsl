@@ -22,8 +22,8 @@ struct Camera {
 };
 
 fn random_vec_in_unit_sphere(co: vec2<f32>, jitter: f32) -> vec3<f32> {
-    while (true) {
-        let vector = random_vec_range(co, -1.0, 1.0, jitter);
+    for (var j = 0.0; j < 1.0; j += 0.1) {
+        let vector = random_vec_range(co, -1.0, 1.0, jitter + j);
         if vec_len_squared(vector) < 1.0 {
             return vector;
         }

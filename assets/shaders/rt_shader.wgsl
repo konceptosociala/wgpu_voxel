@@ -30,68 +30,110 @@ var<uniform> camera: Utils::Camera;
 var<storage, read_write> color_buffer: array<vec4<f32>>;
 
 @group(1) @binding(2)
-var<storage, read_write> normal_buffer: array<vec4<f32>>;
+var<storage, read_write> background_buffer: array<vec4<f32>>;
 
 @group(1) @binding(3)
-var<storage, read_write> depth_buffer: array<f32>;
+var<storage, read_write> normal_buffer: array<vec4<f32>>;
 
 @group(1) @binding(4)
-var<storage, read> palettes_buffer: array<vec4<f32>>;
+var<storage, read_write> depth_buffer: array<f32>;
 
 @group(1) @binding(5)
-var chunks: texture_3d<u32>;
+var<storage, read_write> depth2_buffer: array<f32>;
 
 @group(1) @binding(6)
+var<storage, read> palettes_buffer: array<vec4<f32>>;
+
+@group(1) @binding(7)
+var chunks: texture_3d<u32>;
+
+@group(1) @binding(8)
 var chunks_sampler: sampler;
 
 // Push Constants
 var<push_constant> tmp_transform: Utils::Transform;
 
+fn box_array_hit(
+    ray: Ray::Ray, 
+    t_min: f32, 
+    t_max: f32,
+    record: ptr<function, Ray::HitRecord>,
+) -> bool {
+    var boxes = array(
+        Box::Box(
+            vec3<f32>(
+                -Constants::HALF_VOXEL_SIZE + Constants::VOXEL_SIZE,
+                -Constants::HALF_VOXEL_SIZE,
+                -Constants::HALF_VOXEL_SIZE,
+            ),
+            vec3<f32>(
+                Constants::HALF_VOXEL_SIZE + Constants::VOXEL_SIZE,
+                Constants::HALF_VOXEL_SIZE,
+                Constants::HALF_VOXEL_SIZE,
+            ),
+        ),
+        Box::Box(
+            vec3<f32>(
+                -Constants::HALF_VOXEL_SIZE - Constants::VOXEL_SIZE,
+                -Constants::HALF_VOXEL_SIZE,
+                -Constants::HALF_VOXEL_SIZE,
+            ),
+            vec3<f32>(
+                Constants::HALF_VOXEL_SIZE - Constants::VOXEL_SIZE,
+                Constants::HALF_VOXEL_SIZE,
+                Constants::HALF_VOXEL_SIZE,
+            ),
+        ),
+    );
+
+    var temp = Ray::HitRecord();
+    var hit_anything = false;
+    var closest_so_far = t_max;
+
+    for (var i = 0; i < 2; i++) {
+        var box = boxes[i];
+        if Box::hit(&box, ray, t_min, closest_so_far, &temp) {
+            hit_anything = true;
+            closest_so_far = temp.t;
+            *record = temp;
+        }
+    }
+
+    return hit_anything;
+}
+
 fn render(ray: Ray::Ray, co: vec2<u32>, scan_depth: u32) {
     var current_ray = ray;
     var current_depth = scan_depth;
-    var color = vec4<f32>(1.0);
     var attenuation = 1.0;
 
     let index = co.x + co.y * taa_config.canvas_width;
+    let coords = vec2<f32>(f32(co.x)/f32(taa_config.canvas_width), f32(co.y)/f32(taa_config.canvas_height));
 
-    velocity_buffer[index] = calc_velocity(
-        vec2<f32>(f32(co.x)/f32(taa_config.canvas_width), f32(co.y)/f32(taa_config.canvas_height)), 
-        1.0,
-    );
+    let unit_direction = normalize(current_ray.direction);
+    let a = 0.5 * (unit_direction.y + 1.0);
+    let background_color = (1.0 - a) * vec3<f32>(1.0) + a * vec3<f32>(0.5, 0.7, 1.0);
 
     loop {
         if current_depth == 0u {
-            color_buffer[index] = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            color_buffer[index] = vec4<f32>(vec3<f32>(0.0), 1.0);
             return;
         }
 
         var hit_record = Ray::HitRecord();
 
-        var box = Box::Box(vec3<f32>(-3., -3., -3,), vec3<f32>(-6., -6., -6.));
+        // For box array tracing
+        // if box_array_hit(current_ray, 0.001, 3.40282347e+38, &hit_record) {
 
-        if Box::hit(&box, current_ray, 0.001, 3.40282347e+38, &hit_record) {
-        // if Chunk::hit(current_ray, 0.001, 3.40282347e+38, &hit_record) {
-            let direction = hit_record.normal + normalize(Utils::random_vec_in_unit_sphere(vec2<f32>(co), taa_config.jitter));
+        // For voxel tracing
+        if Chunk::hit(current_ray, 0.001, 3.40282347e+38, &hit_record) {   
+
+            let direction = hit_record.normal + Utils::random_vec_in_unit_sphere(vec2<f32>(co), taa_config.jitter);
             current_ray = Ray::Ray(hit_record.p, direction);
             attenuation *= 0.5;
             current_depth -= 1u;
-            // color_buffer[index] = hit_record.voxel_color;
-            // normal_buffer[index] = vec4<f32>(hit_record.normal, 1.0);
-            // depth_buffer[index] = hit_record.t;
-            velocity_buffer[index] = calc_velocity(
-                vec2<f32>(f32(co.x)/f32(taa_config.canvas_width), f32(co.y)/f32(taa_config.canvas_height)), 
-                hit_record.t,
-            );
-            // return;
         } else {
-            let unit_direction = normalize(current_ray.direction);
-            let a = 0.5 * (unit_direction.y + 1.0);
-            let background_color = (1.0 - a) * vec3<f32>(1.0, 1.0, 1.0) + a * vec3<f32>(0.5, 0.7, 1.0);
-
-            color_buffer[index] = vec4<f32>(attenuation * background_color, 1.0);
-            // normal_buffer[index] = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-            // depth_buffer[index] = 1.0;
+            color_buffer[index] = vec4<f32>(background_color  * attenuation, 1.0);
             return;
         }
     }

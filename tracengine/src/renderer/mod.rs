@@ -217,7 +217,6 @@ impl Renderer {
                 required_features: wgpu::Features::PUSH_CONSTANTS,
                 required_limits: wgpu::Limits {
                     max_push_constant_size: 128,
-                    max_bind_groups: 8,
                     ..Default::default()
                 },
                 label: Some("Logical device"),

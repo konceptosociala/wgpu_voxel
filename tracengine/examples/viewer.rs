@@ -2,21 +2,16 @@ use std::path::PathBuf;
 use clap::Parser;
 use tracengine::{
     engine::Engine, event::{MouseScrollDelta, WindowEvent}, glm, include_wgsl, renderer::{
-        error::RenderError, 
-        hal::{
-            buffer::Buffer, 
-            pipeline::Pipeline
-        }, 
-        pbr::{
+        error::RenderError, hal::{
+            buffer::{Buffer, BufferResourceDescriptor}, 
+            pipeline::{Pipeline, ShaderResource}
+        }, pbr::{
             camera::{Camera, CameraType, CameraUniform},
             transform::Transform
-        }, 
-        voxel::{
+        }, types::*, voxel::{
             chunk::Chunk,
             model::VoxelModel
-        }, 
-        types::*,
-        Drawable, Renderer
+        }, Drawable, Renderer
     }, 
     Game, PhysicalSize, WindowBuilder, World
 };
@@ -33,7 +28,8 @@ struct CameraConfiguration {
 /// Engine implementation for viewing voxel models.
 #[derive(Default)]
 struct VoxelViewer {
-    camera_buffer: Option<CameraUniform>,
+    camera_buffer: Option<Buffer<CameraUniform>>,
+    shader_resource: Option<ShaderResource>,
     pipeline: Option<Pipeline>,
     camera_config: CameraConfiguration,
     model_path: PathBuf,
@@ -41,19 +37,21 @@ struct VoxelViewer {
 
 impl Engine for VoxelViewer {
     fn init(&mut self, world: &mut World, renderer: &mut Renderer) {
-        self.camera_buffer = Some(BufferResource::new(
-            renderer,
-            Buffer::new(renderer, 1, BufferUsages::UNIFORM | BufferUsages::COPY_DST),
-            ShaderStages::VERTEX,
-            BufferBindingType::Uniform,
-        ));
+        self.camera_buffer = Some(Buffer::new(renderer, 1, BufferUsages::UNIFORM | BufferUsages::COPY_DST));
+
+        self.shader_resource = Some(
+            ShaderResource::builder()
+                .add_buffer(self.camera_buffer.as_ref().unwrap(), &BufferResourceDescriptor {
+                    visibility: ShaderStages::VERTEX,
+                    buffer_type: BufferBindingType::Uniform,
+                })
+                .build(renderer)
+        );
 
         self.pipeline = Some(Pipeline::new_render(
             renderer, 
             include_wgsl!("../../assets/shaders/main_shader.wgsl"),
-            &[
-                self.camera_buffer.as_ref().unwrap()
-            ],
+            &[self.shader_resource.as_ref().unwrap()],
             "Viewer",
             true,
         ));
@@ -137,7 +135,6 @@ impl Engine for VoxelViewer {
                 self.camera_buffer
                     .as_ref()
                     .unwrap()
-                    .buffer
                     .fill_exact(renderer, 0, &[CameraUniform::new(camera, transform)]).unwrap();
             }
 
@@ -148,7 +145,7 @@ impl Engine for VoxelViewer {
                     Some(transform), 
                     self.pipeline.as_ref().unwrap(),
                     &[
-                        self.camera_buffer.as_ref().unwrap()
+                        self.shader_resource.as_ref().unwrap()
                     ],
                 );
             }

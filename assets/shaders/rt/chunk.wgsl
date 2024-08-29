@@ -6,13 +6,13 @@
 #import constants.wgsl as Constants
 #import utils.wgsl as Utils
 
-@group(1) @binding(4)
+@group(1) @binding(6)
 var<storage, read> palettes_buffer: array<vec4<f32>>;
 
-@group(1) @binding(5)
+@group(1) @binding(7)
 var chunks: texture_3d<u32>;
 
-@group(1) @binding(6)
+@group(1) @binding(8)
 var chunks_sampler: sampler;
 
 fn hit(
@@ -42,7 +42,7 @@ fn hit(
     var voxel = Voxel::Voxel(false, 0);
 
     var axis = 0;
-    loop {
+    for (var steps = 0u; steps < Constants::MAX_TRAVERSAL_STEPS; steps++) {
         voxel = Voxel::parse(textureLoad(chunks, vec3<i32>(pos), 0));
 
         if voxel.is_active {

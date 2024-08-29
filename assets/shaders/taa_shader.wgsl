@@ -1,6 +1,9 @@
 // TAA Shader
 
 #import rt/utils.wgsl as Utils
+#import rt/ray.wgsl as Ray
+#import rt/box.wgsl as Box
+#import rt/chunk.wgsl as Chunk
 
 // ========= Uniforms =========
 
@@ -25,19 +28,28 @@ var<uniform> camera: Utils::Camera;
 var<storage, read_write> color_buffer: array<vec4<f32>>;
 
 @group(1) @binding(2)
-var<storage, read_write> normal_buffer: array<vec4<f32>>;
+var<storage, read_write> background_buffer: array<vec4<f32>>;
 
 @group(1) @binding(3)
-var<storage, read_write> depth_buffer: array<f32>;
+var<storage, read_write> normal_buffer: array<vec4<f32>>;
 
 @group(1) @binding(4)
-var<storage, read> palettes_buffer: array<vec4<f32>>;
+var<storage, read_write> depth_buffer: array<f32>;
 
 @group(1) @binding(5)
-var chunks: texture_3d<u32>;
+var<storage, read_write> depth2_buffer: array<f32>;
 
 @group(1) @binding(6)
+var<storage, read> palettes_buffer: array<vec4<f32>>;
+
+@group(1) @binding(7)
+var chunks: texture_3d<u32>;
+
+@group(1) @binding(8)
 var chunks_sampler: sampler;
+
+// Push Constants
+var<push_constant> tmp_transform: Utils::Transform;
 
 // ========= Render =========
 
@@ -90,8 +102,8 @@ fn fs_main(
 ) -> @location(0) vec4<f32> {
 
     let color_pos = vec2<u32>(
-        u32((frag_pos.x + 1.0)),
-        u32((frag_pos.y + 1.0)),
+        u32(frag_pos.x + 1.0),
+        u32(frag_pos.y + 1.0),
     );
 
     let history_pos = vec2<f32>(
@@ -99,7 +111,11 @@ fn fs_main(
         frag_pos.y / f32(taa_config.canvas_height),
     );
 
+    let depth = depth_buffer[color_pos.x + color_pos.y * taa_config.canvas_width];
+    let depth2 = depth2_buffer[color_pos.x + color_pos.y * taa_config.canvas_width];
+    let normal = normal_buffer[color_pos.x + color_pos.y * taa_config.canvas_width];
     let velocity = velocity_buffer[color_pos.x + color_pos.y * taa_config.canvas_width].xy;
+    let background_color = background_buffer[color_pos.x + color_pos.y * taa_config.canvas_width];
     let previous_pixel_pos = history_pos - velocity;
 
     let current_color = color_buffer[color_pos.x + color_pos.y * taa_config.canvas_width];
@@ -117,6 +133,10 @@ fn fs_main(
 
     let modulation_factor = 0.9;
 
-    return mix(current_color, history_color, modulation_factor);
+    // return mix(current_color, history_color, modulation_factor);
+    return current_color;
     // return vec4<f32>(velocity.x, velocity.y, 0.0, 1.0);
+    // return vec4<f32>(depth, 0.0, 0.0, 1.0);
+    // return vec4<f32>(depth2, 0.0, 0.0, 1.0);
+    // return normal;
 }

@@ -1,5 +1,7 @@
 // ========= Constants =========
 
+const MAX_TRAVERSAL_STEPS: u32 = 128;
+
 const VOXEL_SIZE: f32 = 1.0 / 8.0;
 
 const HALF_VOXEL_SIZE: f32 = VOXEL_SIZE / 2.0;

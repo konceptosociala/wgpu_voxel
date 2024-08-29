@@ -35,7 +35,25 @@ fn hit(
     (*record).p = Ray::at(ray, (*record).t);
     
     let center = (end + start) * 0.5;    
-    (*record).normal = normalize(vec3<f32>((*record).p.x - center.x, (*record).p.y - center.y, (*record).p.z - center.z));
+    let norm_dir = normalize(vec3<f32>((*record).p.x - center.x, (*record).p.y - center.y, (*record).p.z - center.z));
+
+    (*record).normal = vec3<f32>(1.0, 1.0, 1.0);
+
+    if abs(norm_dir.x) >= abs(norm_dir.y) && abs(norm_dir.x) >= abs(norm_dir.z) {
+        (*record).normal = vec3<f32>(1.0, 0.0, 0.0);
+    }
+
+    if abs(norm_dir.y) >= abs(norm_dir.x) && abs(norm_dir.y) >= abs(norm_dir.z) {
+        (*record).normal = vec3<f32>(0.0, 1.0, 0.0);
+    }
+
+    if abs(norm_dir.z) >= abs(norm_dir.y) && abs(norm_dir.z) >= abs(norm_dir.x) {
+        (*record).normal = vec3<f32>(0.0, 0.0, 1.0);
+    }
+
+    if dot(ray.direction, (*record).normal) >= 0.0 {
+        (*record).normal = -(*record).normal;
+    }
 
     return true;
 }
