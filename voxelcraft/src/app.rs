@@ -80,6 +80,11 @@ impl Engine for VoxelCraft {
             rebind_resources = true;
         }
 
+        if *tracer.background_buffer.capacity() != viewport_size {
+            tracer.background_buffer.resize(renderer, viewport_size);
+            rebind_resources = true;
+        }
+
         if *tracer.normal_buffer.capacity() != viewport_size {
             tracer.normal_buffer.resize(renderer, viewport_size);
             rebind_resources = true;
@@ -90,11 +95,16 @@ impl Engine for VoxelCraft {
             rebind_resources = true;
         }
 
+        if *tracer.depth2_buffer.capacity() != viewport_size {
+            tracer.depth2_buffer.resize(renderer, viewport_size);
+            rebind_resources = true;
+        }
+
         if tracer.camera.image_width != renderer.size().width || tracer.camera.image_height != renderer.size().height {
             tracer.camera = RtCamera::new(&RtCameraDescriptor {
                 image_width: renderer.size().width,
                 image_height: renderer.size().height,
-                scan_depth: 2,
+                scan_depth: 10,
                 jitter: tracer.taa.current_jitter,
             });
             tracer.camera_buffer.fill_exact(renderer, 0, &[tracer.camera.uniform_data()]).unwrap();

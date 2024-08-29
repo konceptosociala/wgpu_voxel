@@ -33,7 +33,9 @@ pub struct Tracer {
     pub camera_buffer: Buffer<RtCameraUniform>,
 
     pub color_buffer: Buffer<glm::Vec4>,
+    pub background_buffer: Buffer<glm::Vec4>,
     pub depth_buffer: Buffer<f32>,
+    pub depth2_buffer: Buffer<f32>,
     pub normal_buffer: Buffer<glm::Vec4>,
 
     pub palettes_buffer: Buffer<glm::Vec4>,
@@ -57,9 +59,11 @@ impl Tracer {
         // Init color buffer
         let viewport_size = (renderer.size().width * renderer.size().height) as usize;
         let color_buffer = Buffer::new(renderer, viewport_size, BufferUsages::STORAGE);
+        let background_buffer = Buffer::new(renderer, viewport_size, BufferUsages::STORAGE);
 
         // Init depth buffer
         let depth_buffer = Buffer::new(renderer, viewport_size, BufferUsages::STORAGE);
+        let depth2_buffer = Buffer::new(renderer, viewport_size, BufferUsages::STORAGE);
 
         // Init normal buffer
         let normal_buffer = Buffer::new(renderer, viewport_size, BufferUsages::STORAGE);
@@ -73,7 +77,7 @@ impl Tracer {
         let mut camera = RtCamera::new(&RtCameraDescriptor {
             image_width: renderer.size().width,
             image_height: renderer.size().height,
-            scan_depth: 2,
+            scan_depth: 10,
             jitter: taa.current_jitter,
         });
 
@@ -121,11 +125,19 @@ impl Tracer {
                 visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
                 buffer_type: BufferBindingType::Storage { read_only: false },
             })
+            .add_buffer(&background_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+                buffer_type: BufferBindingType::Storage { read_only: false },
+            })
             .add_buffer(&normal_buffer, &BufferResourceDescriptor {
                 visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
                 buffer_type: BufferBindingType::Storage { read_only: false },
             })
             .add_buffer(&depth_buffer, &BufferResourceDescriptor {
+                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+                buffer_type: BufferBindingType::Storage { read_only: false },
+            })
+            .add_buffer(&depth2_buffer, &BufferResourceDescriptor {
                 visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
                 buffer_type: BufferBindingType::Storage { read_only: false },
             })
@@ -159,8 +171,10 @@ impl Tracer {
             taa,
             camera_buffer,
             color_buffer,
+            background_buffer,
             normal_buffer,
             depth_buffer,
+            depth2_buffer,
             chunks_3d_texture,
             palettes_buffer,
             shader_resource,
@@ -175,30 +189,38 @@ impl Tracer {
 
     pub fn rebind_resources(&mut self, renderer: &mut Renderer) {
         self.shader_resource = ShaderResource::builder()
-            .add_buffer(&self.camera_buffer, &BufferResourceDescriptor {
-                visibility: ShaderStages::COMPUTE,
-                buffer_type: BufferBindingType::Uniform,
-            })
-            .add_buffer(&self.color_buffer, &BufferResourceDescriptor {
-                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
-                buffer_type: BufferBindingType::Storage { read_only: false },
-            })
-            .add_buffer(&self.normal_buffer, &BufferResourceDescriptor {
-                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
-                buffer_type: BufferBindingType::Storage { read_only: false },
-            })
-            .add_buffer(&self.depth_buffer, &BufferResourceDescriptor {
-                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
-                buffer_type: BufferBindingType::Storage { read_only: false },
-            })
-            .add_buffer(&self.palettes_buffer, &BufferResourceDescriptor {
-                visibility: ShaderStages::COMPUTE,
-                buffer_type: BufferBindingType::Storage { read_only: true },
-            })
-            .add_texture(&self.chunks_3d_texture, &TextureResourceDescriptor {
-                usage: TextureResourceUsage::TEXTURE | TextureResourceUsage::SAMPLER,
-                sample_type: Some(TextureSampleType::Uint),
-            })
-            .build(renderer);
+        .add_buffer(&self.camera_buffer, &BufferResourceDescriptor {
+            visibility: ShaderStages::COMPUTE,
+            buffer_type: BufferBindingType::Uniform,
+        })
+        .add_buffer(&self.color_buffer, &BufferResourceDescriptor {
+            visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+            buffer_type: BufferBindingType::Storage { read_only: false },
+        })
+        .add_buffer(&self.background_buffer, &BufferResourceDescriptor {
+            visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+            buffer_type: BufferBindingType::Storage { read_only: false },
+        })
+        .add_buffer(&self.normal_buffer, &BufferResourceDescriptor {
+            visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+            buffer_type: BufferBindingType::Storage { read_only: false },
+        })
+        .add_buffer(&self.depth_buffer, &BufferResourceDescriptor {
+            visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+            buffer_type: BufferBindingType::Storage { read_only: false },
+        })
+        .add_buffer(&self.depth2_buffer, &BufferResourceDescriptor {
+            visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+            buffer_type: BufferBindingType::Storage { read_only: false },
+        })
+        .add_buffer(&self.palettes_buffer, &BufferResourceDescriptor {
+            visibility: ShaderStages::COMPUTE,
+            buffer_type: BufferBindingType::Storage { read_only: true },
+        })
+        .add_texture(&self.chunks_3d_texture, &TextureResourceDescriptor {
+            usage: TextureResourceUsage::TEXTURE | TextureResourceUsage::SAMPLER,
+            sample_type: Some(TextureSampleType::Uint),
+        })
+        .build(renderer)
     }
 }
